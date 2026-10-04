@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "security-lint-on-save",
+      "trigger": "PostFileSave",
+      "matcher": "src/main/derivation/**,src/main/hardware/**,src/main/session/**",
+      "action": {
+        "type": "command",
+        "command": "node scripts/security-lint.js {{filePath}}"
+      }
+    }
+  ]
+}

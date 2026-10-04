@@ -1,0 +1,28 @@
+{
+  "name": "Hardware Wallet Security",
+  "version": "0.1.0",
+  "description": "Security enforcement power for KeyWallet. Bundles the security steering document, MCP tools for transaction inspection and devnet queries, and the Crypto Security Reviewer agent.",
+  "steeringDocuments": [
+    ".kiro/steering/security.md"
+  ],
+  "mcpServers": [
+    {
+      "name": "key-wallet-mcp",
+      "entrypoint": "src/mcp/server.ts",
+      "description": "Provides inspect_transaction and query_devnet tools for inspecting Solana transactions and querying devnet without exposing private keys."
+    }
+  ],
+  "agents": [
+    {
+      "name": "Crypto Security Reviewer",
+      "config": "agents/crypto-security-reviewer.json",
+      "description": "Reviews cryptographic code for violations of the four KeyWallet security rules."
+    }
+  ],
+  "securityRules": [
+    "No PRF_Output or private key bytes written to disk",
+    "No logging of secret material",
+    "Zero-overwrite secret buffers immediately after use",
+    "Use platform CSPRNG only (node:crypto.randomBytes or crypto.getRandomValues)"
+  ]
+}

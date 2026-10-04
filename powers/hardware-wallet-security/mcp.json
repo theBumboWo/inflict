@@ -1,0 +1,14 @@
+﻿{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "servers": [
+    {
+      "name": "key-wallet-mcp",
+      "description": "Provides inspect_transaction and query_devnet tools for inspecting Solana transactions and querying devnet without exposing private keys.",
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["ts-node", "src/mcp/server.ts"]
+      }
+    }
+  ]
+}

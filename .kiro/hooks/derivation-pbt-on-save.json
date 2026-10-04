@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "derivation-pbt-on-save",
+      "trigger": "PostFileSave",
+      "description": "Run derivation property-based tests whenever a file in src/main/derivation/ is saved",
+      "matcher": "src/main/derivation/**",
+      "action": {
+        "type": "command",
+        "command": "npx vitest run test/property/derivation.property.test.ts"
+      }
+    }
+  ]
+}
