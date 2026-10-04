@@ -1,4 +1,4 @@
-// src/main/index.ts
+﻿// src/main/index.ts
 //
 // Electron main process entry point.
 //
@@ -16,7 +16,7 @@ import path from "node:path";
 
 import { app, BrowserWindow, clipboard, ipcMain } from "electron";
 
-// ── Services ──────────────────────────────────────────────────────────────────
+// â”€â”€ Services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import { DeviceMonitor } from "./device/DeviceMonitor";
 import type { DeviceEvent } from "./device/DeviceMonitor";
 import { EnrollmentService, EnrollmentError } from "./enrollment/EnrollmentService";
@@ -28,18 +28,18 @@ import type { BalanceResult } from "./solana/SolanaService";
 import { TransactionService } from "./transaction/TransactionService";
 import { createCredentialStore } from "./storage/CredentialStore";
 
-// ── Hardware provider (mock until Task 24) ────────────────────────────────────
+// â”€â”€ Hardware provider (mock until Task 24) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // When Libfido2HardwareIdentityProvider is added, swap this import.
 import { MockHardwareIdentityProvider } from "./hardware/MockHardwareIdentityProvider";
 
-// ── Shared types ──────────────────────────────────────────────────────────────
+// â”€â”€ Shared types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import type {
   ErrorCategory,
   SessionPublicData,
   TransferParams,
 } from "../shared/ipc-types";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Devnet periodic balance refresh interval (30 seconds). */
 const BALANCE_REFRESH_INTERVAL_MS = 30_000;
@@ -47,9 +47,9 @@ const BALANCE_REFRESH_INTERVAL_MS = 30_000;
 /** RP identifier used throughout the app. */
 const RP_ID = "key-wallet.local";
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Service bootstrap
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const hardwareProvider = new MockHardwareIdentityProvider();
 const credentialStore = createCredentialStore(app);
@@ -65,12 +65,12 @@ const deviceMonitor = new DeviceMonitor(
   () => sessionService.isSessionActive()
 );
 
-// Per-enrollment AbortController — replaced on each enrollment start.
+// Per-enrollment AbortController â€” replaced on each enrollment start.
 let enrollmentAbortController: AbortController | null = null;
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Safely get the first (and usually only) BrowserWindow's webContents.
@@ -144,9 +144,9 @@ function requireSession(): NonNullable<ReturnType<SessionService["getActiveSessi
   return session;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DeviceMonitor → renderer event forwarding
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// DeviceMonitor â†’ renderer event forwarding
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 deviceMonitor.on("device-connected", (e: DeviceEvent) => {
   if (e.type !== "device-connected") return;
@@ -159,7 +159,7 @@ deviceMonitor.on("device-connected", (e: DeviceEvent) => {
 deviceMonitor.on("device-removed", (e: DeviceEvent) => {
   if (e.type !== "device-removed") return;
 
-  // Terminate active session immediately (Req 5.3 — must complete within 200ms)
+  // Terminate active session immediately (Req 5.3 â€” must complete within 200ms)
   const session = sessionService.getActiveSession();
   if (session) {
     transactionService.discardOnSessionTermination();
@@ -178,14 +178,14 @@ deviceMonitor.on("device-unsupported", (e: DeviceEvent) => {
   sendToRenderer("device:unsupported", { reason: e.reason });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SolanaService → renderer event forwarding
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// SolanaService â†’ renderer event forwarding
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 solanaService.on("balance", (result: BalanceResult) => {
   sendToRenderer("balance:updated", {
     sol: result.sol,
-    lamports: result.lamports.toString(), // bigint → string for IPC safety
+    lamports: result.lamports.toString(), // bigint â†’ string for IPC safety
   });
 });
 
@@ -193,11 +193,11 @@ solanaService.on("balanceUnavailable", () => {
   sendToRenderer("balance:unavailable");
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // IPC Handlers
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// ── device:list ───────────────────────────────────────────────────────────────
+// â”€â”€ device:list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle("device:list", async () => {
   const devices = await hardwareProvider.listDevices();
   // Strip non-public fields; return only what the renderer needs.
@@ -208,7 +208,7 @@ ipcMain.handle("device:list", async () => {
   }));
 });
 
-// ── enrollment:start ──────────────────────────────────────────────────────────
+// â”€â”€ enrollment:start â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "enrollment:start",
   async (_event, payload: { displayName: string }) => {
@@ -284,7 +284,7 @@ ipcMain.handle(
   }
 );
 
-// ── enrollment:cancel ─────────────────────────────────────────────────────────
+// â”€â”€ enrollment:cancel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle("enrollment:cancel", () => {
   if (enrollmentAbortController) {
     enrollmentAbortController.abort();
@@ -293,7 +293,7 @@ ipcMain.handle("enrollment:cancel", () => {
   return { cancelled: true };
 });
 
-// ── credential:discover ───────────────────────────────────────────────────────
+// â”€â”€ credential:discover â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "credential:discover",
   async (_event, payload: { devicePath: string }) => {
@@ -311,7 +311,7 @@ ipcMain.handle(
   }
 );
 
-// ── credential:select ─────────────────────────────────────────────────────────
+// â”€â”€ credential:select â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "credential:select",
   async (_event, payload: { credentialId: string }) => {
@@ -365,7 +365,7 @@ ipcMain.handle(
   }
 );
 
-// ── wallet:derive ─────────────────────────────────────────────────────────────
+// â”€â”€ wallet:derive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "wallet:derive",
   async (_event, payload: { devicePath: string; credentialId: string }) => {
@@ -412,14 +412,14 @@ ipcMain.handle(
   }
 );
 
-// ── session:get ───────────────────────────────────────────────────────────────
+// â”€â”€ session:get â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Req 5.8: validate session is active before returning any wallet data.
 ipcMain.handle("session:get", () => {
   const session = sessionService.getActiveSession();
   return toPublicSession(session);
 });
 
-// ── session:terminate ─────────────────────────────────────────────────────────
+// â”€â”€ session:terminate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle("session:terminate", () => {
   const session = sessionService.getActiveSession();
   if (!session) return { terminated: false };
@@ -433,7 +433,7 @@ ipcMain.handle("session:terminate", () => {
   return { terminated: true };
 });
 
-// ── balance:get ───────────────────────────────────────────────────────────────
+// â”€â”€ balance:get â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle("balance:get", async () => {
   const session = requireSession();
 
@@ -454,7 +454,7 @@ ipcMain.handle("balance:get", async () => {
   }
 });
 
-// ── balance:refresh ───────────────────────────────────────────────────────────
+// â”€â”€ balance:refresh â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle("balance:refresh", async () => {
   const session = requireSession();
 
@@ -467,7 +467,7 @@ ipcMain.handle("balance:refresh", async () => {
   return { refreshed: true };
 });
 
-// ── transaction:validate ──────────────────────────────────────────────────────
+// â”€â”€ transaction:validate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "transaction:validate",
   (_event, params: TransferParams) => {
@@ -479,7 +479,7 @@ ipcMain.handle(
   }
 );
 
-// ── transaction:preview ───────────────────────────────────────────────────────
+// â”€â”€ transaction:preview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "transaction:preview",
   async (_event, params: TransferParams) => {
@@ -498,7 +498,7 @@ ipcMain.handle(
   }
 );
 
-// ── transaction:submit ────────────────────────────────────────────────────────
+// â”€â”€ transaction:submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "transaction:submit",
   async (_event, params: TransferParams) => {
@@ -539,16 +539,16 @@ ipcMain.handle(
   }
 );
 
-// ── address:copy ──────────────────────────────────────────────────────────────
+// â”€â”€ address:copy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle("address:copy", () => {
   const session = requireSession();
   clipboard.writeText(session.walletAddress);
   return { copied: true };
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // IPC utility: normalise TransferParams
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * TransferParams contains `bigint` fields that JSON serialisation converts to
@@ -567,16 +567,16 @@ function normaliseTransferParams(
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Electron app lifecycle
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 900,
     height: 680,
     webPreferences: {
-      // Security settings (Req 15 — process separation)
+      // Security settings (Req 15 â€” process separation)
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -590,7 +590,7 @@ function createWindow(): void {
     mainWindow.webContents.openDevTools();
   } else {
     void mainWindow.loadFile(
-      path.join(__dirname, "../../dist/renderer/index.html")
+      path.join(__dirname, "../../renderer/index.html")
     );
   }
 }
@@ -631,3 +631,4 @@ app.on("before-quit", () => {
     sessionService.terminateSession(session.sessionId);
   }
 });
+
