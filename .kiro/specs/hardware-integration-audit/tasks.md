@@ -187,7 +187,7 @@ This plan repairs and verifies the end-to-end FIDO2 hardware path from a physica
   - [x] 7.2 Run `npm run hardware:test` with YubiKey plugged in and confirm all steps print "PASS"
     - _Requirements: 12.2_
 
-  - [ ] 7.3 Run the full app (`npm start`), enroll a credential, verify a wallet address appears in the UI
+  - [x] 7.3 Run the full app (`npm start`), enroll a credential, verify a wallet address appears in the UI
     - _Requirements: 25.1, 25.2_
 
   - [ ] 7.4 Restart the app, re-insert the same YubiKey, and confirm the same wallet address is derived (determinism check)

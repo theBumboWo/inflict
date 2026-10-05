@@ -1,4 +1,4 @@
-/**
+﻿/**
  * NodeHidHardwareIdentityProvider
  *
  * Pure-Node.js CTAP2 implementation of IHardwareIdentityProvider backed by
@@ -102,9 +102,9 @@ function mapCtap2Error(err: unknown): CtapError {
     ["KEY_STORE_FULL", "CTAP2_ERR_KEY_STORE_FULL"],
     ["OPERATION_DENIED", "CTAP2_ERR_OPERATION_DENIED"],
     ["NOT_ALLOWED", "CTAP2_ERR_NOT_ALLOWED"],
-    // "Credential management not supported" Ã¢â€ â€™ NOT_ALLOWED
+    // "Credential management not supported" ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ NOT_ALLOWED
     ["CREDENTIAL MANAGEMENT NOT SUPPORTED", "CTAP2_ERR_NOT_ALLOWED"],
-    // "PIN required" Ã¢â€ â€™ PIN_INVALID (user needs to supply PIN)
+    // "PIN required" ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ PIN_INVALID (user needs to supply PIN)
     ["PIN REQUIRED", "CTAP2_ERR_PIN_INVALID"],
   ];
   for (const [token, code] of codeMap) {
@@ -156,7 +156,7 @@ function openDevice(devicePath: string): { device: HID.HID; close: () => void } 
       try {
         device.close();
       } catch {
-        // Ignore errors on close Ã¢â‚¬â€ device may already be disconnected.
+        // Ignore errors on close ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â device may already be disconnected.
       }
     }
   };
@@ -173,7 +173,7 @@ function openDevice(devicePath: string): { device: HID.HID; close: () => void } 
  * modules for communication.
  *
  * Every public method opens the HID device, performs the CTAP2 operation,
- * and closes the device in a `finally` block Ã¢â‚¬â€ even on error.
+ * and closes the device in a `finally` block ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â even on error.
  *
  * On Windows, when `node-hid` finds no FIDO devices (OS HID claim), the class
  * transparently falls back to `@vaultys/webauthn-node` (libfido2/webauthn.dll)
@@ -254,14 +254,10 @@ export class NodeHidHardwareIdentityProvider implements IHardwareIdentityProvide
         (d) => KNOWN_FIDO2_VENDORS.has(d.vendorId),
       );
       if (hasKnownVendor) {
-        console.log(
-          "[NodeHidHardwareIdentityProvider] Known FIDO2 vendor detected; " +
-            "using windows://hello for CTAP2 operations.",
-        );
         const winDevices = await this.getWindowsProvider().listDevices();
         deviceInfos.push(...winDevices);
       }
-      // If no known vendor is found, return empty array — shows SEARCHING in UI.
+      // If no known vendor is found, return empty array â€” shows SEARCHING in UI.
     }
 
     return deviceInfos;
@@ -412,3 +408,4 @@ export class NodeHidHardwareIdentityProvider implements IHardwareIdentityProvide
     }
   }
 }
+

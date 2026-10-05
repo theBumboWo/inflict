@@ -1,4 +1,4 @@
-// src/main/index.ts
+﻿// src/main/index.ts
 //
 // Electron main process entry point.
 //
@@ -18,7 +18,7 @@ import path from "node:path";
 
 import { app, BrowserWindow, clipboard, ipcMain } from "electron";
 
-// ── Services ──────────────────────────────────────────────────────────────────
+// â”€â”€ Services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import { DeviceMonitor } from "./device/DeviceMonitor";
 import type { DeviceEvent } from "./device/DeviceMonitor";
 import { EnrollmentService, EnrollmentError } from "./enrollment/EnrollmentService";
@@ -36,14 +36,14 @@ import { createCredentialStore } from "./storage/CredentialStore";
 import { MockHardwareIdentityProvider } from "./hardware/MockHardwareIdentityProvider";
 import { NodeHidHardwareIdentityProvider } from "./hardware/NodeHidHardwareIdentityProvider";
 
-// ── Shared types ──────────────────────────────────────────────────────────────
+// â”€â”€ Shared types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import type {
   ErrorCategory,
   SessionPublicData,
   TransferParams,
 } from "../shared/ipc-types";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // -- Native module path resolution (Req 22.3) ---------------------------------
 //
@@ -114,7 +114,7 @@ probeNativeHidModule();
 //   Dev mode:  <app.getAppPath()>/libfido2-win/libfido2-1.15.0-win/Win64/Release/v143/dynamic/
 //   Packaged:  <process.resourcesPath>/libfido2-win/libfido2-1.15.0-win/Win64/Release/v143/dynamic/
 //
-// NOTE: Do NOT throw or crash here — just warn.
+// NOTE: Do NOT throw or crash here â€” just warn.
 function probeFido2AssertExe(): void {
   const cliRelative = path.join(
     "libfido2-win",
@@ -168,9 +168,9 @@ const BALANCE_REFRESH_INTERVAL_MS = 30_000;
 /** RP identifier used throughout the app. */
 const RP_ID = "key-wallet.local";
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Service bootstrap
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const useMock =
   process.env.NODE_ENV === "test" || process.env.KEYWALLET_USE_MOCK === "1";
@@ -195,12 +195,12 @@ const deviceMonitor = new DeviceMonitor(
   () => sessionService.isSessionActive()
 );
 
-// Per-enrollment AbortController — replaced on each enrollment start.
+// Per-enrollment AbortController â€” replaced on each enrollment start.
 let enrollmentAbortController: AbortController | null = null;
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Safely get the first (and usually only) BrowserWindow's webContents.
@@ -274,9 +274,9 @@ function requireSession(): NonNullable<ReturnType<SessionService["getActiveSessi
   return session;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DeviceMonitor → renderer event forwarding
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// DeviceMonitor â†’ renderer event forwarding
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 deviceMonitor.on("device-connected", (e: DeviceEvent) => {
   if (e.type !== "device-connected") return;
@@ -289,7 +289,7 @@ deviceMonitor.on("device-connected", (e: DeviceEvent) => {
 deviceMonitor.on("device-removed", (e: DeviceEvent) => {
   if (e.type !== "device-removed") return;
 
-  // Terminate active session immediately (Req 5.3 — must complete within 200ms)
+  // Terminate active session immediately (Req 5.3 â€” must complete within 200ms)
   const session = sessionService.getActiveSession();
   if (session) {
     transactionService.discardOnSessionTermination();
@@ -308,14 +308,14 @@ deviceMonitor.on("device-unsupported", (e: DeviceEvent) => {
   sendToRenderer("device:unsupported", { reason: e.reason });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SolanaService → renderer event forwarding
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// SolanaService â†’ renderer event forwarding
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 solanaService.on("balance", (result: BalanceResult) => {
   sendToRenderer("balance:updated", {
     sol: result.sol,
-    lamports: result.lamports.toString(), // bigint → string for IPC safety
+    lamports: result.lamports.toString(), // bigint â†’ string for IPC safety
   });
 });
 
@@ -323,11 +323,11 @@ solanaService.on("balanceUnavailable", () => {
   sendToRenderer("balance:unavailable");
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // IPC Handlers
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// ── device:list ───────────────────────────────────────────────────────────────
+// â”€â”€ device:list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle("device:list", async () => {
   const devices = await hardwareProvider.listDevices();
   // Strip non-public fields; return only what the renderer needs.
@@ -338,7 +338,7 @@ ipcMain.handle("device:list", async () => {
   }));
 });
 
-// ── enrollment:start ──────────────────────────────────────────────────────────
+// â”€â”€ enrollment:start â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "enrollment:start",
   async (_event, payload: { displayName: string }) => {
@@ -369,7 +369,7 @@ ipcMain.handle(
       );
 
       // Credential metadata has been stored by EnrollmentService.
-      // Now derive the wallet — this spawns fido2-assert.exe and requires the
+      // Now derive the wallet â€” this spawns fido2-assert.exe and requires the
       // user to touch the key again (Windows Hello will prompt for PIN/touch).
       // Re-send awaiting-touch so the UI shows the ripple and instructs the
       // user to interact with the key a second time.
@@ -382,7 +382,7 @@ ipcMain.handle(
         signal
       );
 
-      // Derivation succeeded — persist nothing new, but notify the UI that
+      // Derivation succeeded â€” persist nothing new, but notify the UI that
       // the save/session-create step is happening (fast, no user interaction).
       if ("kind" in derivationResult) {
         const derivErr = derivationResult as DerivationError;
@@ -422,7 +422,7 @@ ipcMain.handle(
   }
 );
 
-// ── enrollment:cancel ─────────────────────────────────────────────────────────
+// â”€â”€ enrollment:cancel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle("enrollment:cancel", () => {
   if (enrollmentAbortController) {
     enrollmentAbortController.abort();
@@ -431,11 +431,11 @@ ipcMain.handle("enrollment:cancel", () => {
   return { cancelled: true };
 });
 
-// ── credential:discover ─────────────────────────────────────────────────────
+// â”€â”€ credential:discover â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "credential:discover",
   async (_event, _payload: { devicePath: string }) => {
-    // Read from the local credential store — no hardware interaction needed.
+    // Read from the local credential store â€” no hardware interaction needed.
     // On Windows (windows://hello), hardware credential enumeration triggers
     // a user-interaction dialog which is unsuitable for passive discovery.
     const storedCreds = await credentialStore.findAll();
@@ -448,7 +448,7 @@ ipcMain.handle(
   }
 );
 
-// ── credential:select ─────────────────────────────────────────────────────────
+// â”€â”€ credential:select â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "credential:select",
   async (_event, payload: { credentialId: string }) => {
@@ -502,7 +502,7 @@ ipcMain.handle(
   }
 );
 
-// ── wallet:derive ─────────────────────────────────────────────────────────────
+// â”€â”€ wallet:derive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "wallet:derive",
   async (_event, payload: { devicePath: string; credentialId: string }) => {
@@ -549,14 +549,14 @@ ipcMain.handle(
   }
 );
 
-// ── session:get ───────────────────────────────────────────────────────────────
+// â”€â”€ session:get â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Req 5.8: validate session is active before returning any wallet data.
 ipcMain.handle("session:get", () => {
   const session = sessionService.getActiveSession();
   return toPublicSession(session);
 });
 
-// ── session:terminate ─────────────────────────────────────────────────────────
+// â”€â”€ session:terminate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle("session:terminate", () => {
   const session = sessionService.getActiveSession();
   if (!session) return { terminated: false };
@@ -570,7 +570,7 @@ ipcMain.handle("session:terminate", () => {
   return { terminated: true };
 });
 
-// ── balance:get ───────────────────────────────────────────────────────────────
+// â”€â”€ balance:get â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle("balance:get", async () => {
   const session = requireSession();
 
@@ -591,7 +591,7 @@ ipcMain.handle("balance:get", async () => {
   }
 });
 
-// ── balance:refresh ───────────────────────────────────────────────────────────
+// â”€â”€ balance:refresh â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle("balance:refresh", async () => {
   const session = requireSession();
 
@@ -604,7 +604,7 @@ ipcMain.handle("balance:refresh", async () => {
   return { refreshed: true };
 });
 
-// ── transaction:validate ──────────────────────────────────────────────────────
+// â”€â”€ transaction:validate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "transaction:validate",
   (_event, params: TransferParams) => {
@@ -616,7 +616,7 @@ ipcMain.handle(
   }
 );
 
-// ── transaction:preview ───────────────────────────────────────────────────────
+// â”€â”€ transaction:preview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "transaction:preview",
   async (_event, params: TransferParams) => {
@@ -635,7 +635,7 @@ ipcMain.handle(
   }
 );
 
-// ── transaction:submit ────────────────────────────────────────────────────────
+// â”€â”€ transaction:submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle(
   "transaction:submit",
   async (_event, params: TransferParams) => {
@@ -676,7 +676,7 @@ ipcMain.handle(
   }
 );
 
-// ── address:copy ──────────────────────────────────────────────────────────────
+// â”€â”€ address:copy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // -- hardware:diagnose ---------------------------------------------------------
 // Req 22.7: Returns a safe, non-secret diagnostic snapshot of the connected
 // hardware device. No PRF output, seeds, private keys, or any secret material
@@ -749,9 +749,9 @@ ipcMain.handle("address:copy", () => {
   return { copied: true };
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // IPC utility: normalise TransferParams
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * TransferParams contains `bigint` fields that JSON serialisation converts to
@@ -770,16 +770,16 @@ function normaliseTransferParams(
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Electron app lifecycle
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 900,
     height: 680,
     webPreferences: {
-      // Security settings (Req 15 — process separation)
+      // Security settings (Req 15 â€” process separation)
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -834,4 +834,5 @@ app.on("before-quit", () => {
     sessionService.terminateSession(session.sessionId);
   }
 });
+
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Fido2CliHardwareIdentityProvider
  *
  * Implements IHardwareIdentityProvider by spawning the bundled libfido2 CLI
@@ -12,7 +12,7 @@
  *   webauthn.dll.  This class wraps those CLI tools so the wallet's PRF-based
  *   key-derivation path works on Windows.
  *
- * Security note — hmac secret lifetime in process memory:
+ * Security note â€” hmac secret lifetime in process memory:
  *   The 32-byte hmac-secret output travels through the child process's stdout
  *   pipe and is held as a Node.js Buffer for the duration of output parsing.
  *   We zero it immediately after extracting it into the returned AssertionResult,
@@ -57,7 +57,7 @@ const WINDOWS_HELLO_PATH = "windows://hello";
 
 /**
  * Timeout (ms) for a single CLI invocation.  The user may need time to insert
- * the key, touch it, and enter a PIN — 60 s is intentionally generous.
+ * the key, touch it, and enter a PIN â€” 60 s is intentionally generous.
  */
 const CLI_TIMEOUT_MS = 60_000;
 
@@ -193,6 +193,7 @@ function spawnCli(
         stdio: ["pipe", "pipe", "pipe"],
         // Do not inherit shell; we want direct process control.
         shell: false,
+        windowsHide: false,  // Allow Windows Hello dialog to find a parent HWND
       });
     } catch (err) {
       reject(
@@ -339,7 +340,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
     try {
       result = await spawnCli(cliDir, "fido2-token.exe", ["-I", WINDOWS_HELLO_PATH], "");
     } catch (err) {
-      // CLI unavailable or Windows Hello not configured — not a hard error here.
+      // CLI unavailable or Windows Hello not configured â€” not a hard error here.
       console.warn(
         "[Fido2CliHardwareIdentityProvider] fido2-token -I failed:",
         err instanceof Error ? err.message : err,
@@ -395,7 +396,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
    *
    * `-r` = resident credential (no explicit credential ID in input)
    *
-   * The CLI prints one credential per invocation — we run it once and parse
+   * The CLI prints one credential per invocation â€” we run it once and parse
    * the output.  If the device has no credentials for this RP, the CLI exits
    * non-zero with a "no credentials" message; we map that to an empty result.
    *
@@ -411,7 +412,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
    * Returns credentials from the local credential store for the given rpId.
    *
    * On Windows via windows://hello, running fido2-assert -G -r requires the
-   * user to interact with a security dialog — unsuitable for passive discovery.
+   * user to interact with a security dialog â€” unsuitable for passive discovery.
    * We instead read the local JSON credential store, which is written during
    * enrollment and does not require any hardware interaction.
    *
@@ -423,7 +424,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
   ): Promise<DiscoveryResult> {
     // On windows://hello, silent credential enumeration via CTAP2 credential
     // management is not available without triggering a user-interaction dialog.
-    // Return empty list — the caller (App.tsx DeviceConnectedRouter) will show
+    // Return empty list â€” the caller (App.tsx DeviceConnectedRouter) will show
     // the EnrollView when no credentials are found, which is correct: the user
     // either needs to enroll or will select an existing credential from the
     // local store via the credential:discover IPC handler in index.ts.
@@ -451,7 +452,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
     // fido2-cred -M input format (-w = first line is unhashed client data):
     //   line 1: client data (base64, unhashed)
     //   line 2: relying party id (UTF-8)
-    //   line 3: user name (UTF-8)   ← name before id
+    //   line 3: user name (UTF-8)   â† name before id
     //   line 4: user id (base64)
     const clientData = crypto.randomBytes(32).toString("base64");
     const userIdB64 = Buffer.from(options.userId).toString("base64");
@@ -468,7 +469,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
       result = await spawnCli(
         cliDir,
         "fido2-cred.exe",
-        ["-M", "-h", "-r", "-v", "-w", "-i", tmpFile, WINDOWS_HELLO_PATH, "es256"],
+        ["-M", "-h", "-r", "-w", "-t", "uv=true", "-i", tmpFile, WINDOWS_HELLO_PATH, "es256"],
         "",
       );
     } finally {
@@ -484,7 +485,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
     //   1: relying party id (UTF-8)
     //   2: credential format (UTF-8, e.g. "packed")
     //   3: authenticator data (base64)
-    //   4: credential id (base64)    ← what we need
+    //   4: credential id (base64)    â† what we need
     //   5: attestation signature (base64)
     //   6: attestation cert (base64, optional)
     const lines = result.stdout
@@ -557,7 +558,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
       result = await spawnCli(
         cliDir,
         "fido2-assert.exe",
-        ["-G", "-h", "-v", "-w", "-i", tmpFile, WINDOWS_HELLO_PATH],
+        ["-G", "-h", "-w", "-t", "uv=true", "-i", tmpFile, WINDOWS_HELLO_PATH],
         "",
       );
     } finally {
@@ -567,13 +568,12 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
     if (result.exitCode !== 0) {
       throw mapStderrToCtapError(result.stderr, result.exitCode);
     }
-
     // stdout lines:
     // 0: client data hash (base64)
     // 1: relying party ID
     // 2: authenticator data (base64)
     // 3: assertion signature (base64)
-    // 4: user ID (base64) — may be absent for non-resident credentials
+    // 4: user ID (base64) â€” may be absent for non-resident credentials
     // 5: HMAC secret output (base64, 32 bytes)
     //
     // When the credential is non-resident (explicit credentialId supplied),
@@ -594,8 +594,8 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
     }
 
     // Determine which line carries the HMAC secret:
-    // - 6 lines → line[5] is the HMAC secret (user ID was emitted at line[4])
-    // - 5 lines → line[4] is the HMAC secret (no user ID in output)
+    // - 6 lines â†’ line[5] is the HMAC secret (user ID was emitted at line[4])
+    // - 5 lines â†’ line[4] is the HMAC secret (no user ID in output)
     const hmacLineIndex = lines.length >= 6 ? 5 : 4;
     const hmacB64 = lines[hmacLineIndex];
 
@@ -638,3 +638,5 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
     };
   }
 }
+
+

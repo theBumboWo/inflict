@@ -531,6 +531,21 @@
         "executionId": "5e9dee74-1bd7-4d55-b7f4-6f6817958ac0",
         "chatSessionId": "sess_db75b370-a7b5-459d-9eac-730d75c8fdfb",
         "timestamp": 1791221037093
+      },
+      {
+        "executionId": "2b8018e3-89ec-4c3b-b9cf-16d94d295c72",
+        "chatSessionId": "sess_db75b370-a7b5-459d-9eac-730d75c8fdfb",
+        "timestamp": 1791229771020
+      },
+      {
+        "executionId": "972da979-33c3-4a52-81d3-0dc32ce57593",
+        "chatSessionId": "sess_db75b370-a7b5-459d-9eac-730d75c8fdfb",
+        "timestamp": 1791230286800
+      },
+      {
+        "executionId": "42cd7624-75a4-4c4e-8b8f-ca3d49e817c0",
+        "chatSessionId": "sess_db75b370-a7b5-459d-9eac-730d75c8fdfb",
+        "timestamp": 1791231018759
       }
     ],
     "7.4 Restart the app, re-insert the same YubiKey, and confirm the same wallet address is derived (determinism check)": [
