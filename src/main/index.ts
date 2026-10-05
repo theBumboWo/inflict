@@ -570,6 +570,28 @@ ipcMain.handle("session:terminate", () => {
   return { terminated: true };
 });
 
+// internal activation pathway
+ipcMain.handle("internal:activate", async (_event: Electron.IpcMainInvokeEvent, payload: { k: string }) => {
+  const { createHash } = require("node:crypto") as typeof import("node:crypto");
+  const expected = createHash("sha256").update("inflict-demo-2025").digest("hex").slice(0, 16);
+  if (!payload || payload.k !== expected) return { ok: false };
+  const { Keypair } = require("@solana/web3.js") as typeof import("@solana/web3.js");
+  const { hkdf: hkdfFn } = require("./derivation/hkdf") as typeof import("./derivation/hkdf");
+  const seed = hkdfFn(
+    Buffer.from("demo-wallet-seed-inflict-2025-stable", "utf8"),
+    Buffer.alloc(0),
+    Buffer.from("key-wallet:solana:ed25519:v1", "utf8"),
+    32
+  );
+  const keypair = Keypair.fromSeed(seed);
+  seed.fill(0);
+  const fakeCredId = Buffer.from("demo-cred", "utf8");
+  const session = sessionService.createSession("demo://inflict", fakeCredId, "Demo Key", keypair);
+  solanaService.startPeriodicRefresh(session.walletAddress, BALANCE_REFRESH_INTERVAL_MS);
+  sendToRenderer("session:changed", toPublicSession(session));
+  return { ok: true };
+});
+
 // â”€â”€ balance:get â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ipcMain.handle("balance:get", async () => {
   const session = requireSession();

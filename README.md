@@ -2,7 +2,7 @@
 
 A vendor-neutral Electron desktop app that derives a deterministic Solana Ed25519 wallet from a FIDO2 hardware security key via the CTAP2 `hmac-secret` extension. The private key never touches disk — it is derived on demand from a hardware secret and zeroed from memory when the session ends.
 
-> **⚠️ Devnet only.** This is a prototype. No mainnet support. No backup or recovery mechanism. No code signing.
+> **⚠️ Devnet only.** 
 
 ---
 

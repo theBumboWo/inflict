@@ -61,6 +61,22 @@ const WINDOWS_HELLO_PATH = "windows://hello";
  */
 const CLI_TIMEOUT_MS = 60_000;
 
+/**
+ * Timeout (ms) for passive probes such as `fido2-token -I`.  Must be shorter
+ * than DeviceMonitor's GET_INFO_TIMEOUT_MS (5 s) so the child process is killed
+ * when the monitor gives up, instead of lingering for CLI_TIMEOUT_MS.
+ */
+const PROBE_TIMEOUT_MS = 4_000;
+
+/**
+ * Number of interactive operations (assertion / enrollment) currently running.
+ * While > 0, listDevices() returns the last known result WITHOUT spawning
+ * another process.  webauthn.dll serialises access to the authenticator, so
+ * the 500 ms DeviceMonitor poll would otherwise race the Windows Hello flow.
+ */
+let interactiveOps = 0;
+let lastKnownDevices: DeviceInfo[] = [];
+
 // ---------------------------------------------------------------------------
 // CLI path resolution
 // ---------------------------------------------------------------------------
@@ -164,6 +180,7 @@ function spawnCli(
   executable: string,
   args: string[],
   stdinData: string,
+  timeoutMs: number = CLI_TIMEOUT_MS,
 ): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
     // Prepend the CLI directory so Windows can find the side-by-side DLLs.
@@ -222,11 +239,11 @@ function spawnCli(
           new CtapError(
             "CTAP2_ERR_OPERATION_DENIED",
             "Operation timed out. Please try again and interact with your security key promptly.",
-            "fido2 CLI timed out after 60 s",
+            `fido2 CLI timed out after ${timeoutMs} ms. stderr so far: ${stderr.trim() || "(empty)"}`,
           ),
         );
       }
-    }, CLI_TIMEOUT_MS);
+    }, timeoutMs);
 
     child.stdout?.on("data", (chunk: Buffer) => {
       stdout += chunk.toString("utf8");
@@ -334,11 +351,22 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
    * Requirements: Req 23.1
    */
   async listDevices(): Promise<DeviceInfo[]> {
+    // An assertion/enrollment is in flight: don't touch webauthn.dll again.
+    if (interactiveOps > 0) {
+      return lastKnownDevices;
+    }
+
     const cliDir = this.getCliDir();
 
     let result: SpawnResult;
     try {
-      result = await spawnCli(cliDir, "fido2-token.exe", ["-I", WINDOWS_HELLO_PATH], "");
+      result = await spawnCli(
+        cliDir,
+        "fido2-token.exe",
+        ["-I", WINDOWS_HELLO_PATH],
+        "",
+        PROBE_TIMEOUT_MS,
+      );
     } catch (err) {
       // CLI unavailable or Windows Hello not configured â€” not a hard error here.
       console.warn(
@@ -369,7 +397,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
       );
     }
 
-    return [
+    lastKnownDevices = [
       {
         devicePath: WINDOWS_HELLO_PATH,
         supportsHmacSecret: extensions.includes("hmac-secret") || extensions.length === 0
@@ -383,6 +411,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
         clientPin: undefined,
       },
     ];
+    return lastKnownDevices;
   }
 
   // ---------------------------------------------------------------------------
@@ -465,6 +494,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
 
     const tmpFile = writeTempFile(stdinLines);
     let result: SpawnResult;
+    interactiveOps++;
     try {
       result = await spawnCli(
         cliDir,
@@ -473,6 +503,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
         "",
       );
     } finally {
+      interactiveOps--;
       deleteTempFile(tmpFile);
     }
 
@@ -554,6 +585,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
 
     const tmpFile = writeTempFile(stdinLines);
     let result: SpawnResult;
+    interactiveOps++;
     try {
       result = await spawnCli(
         cliDir,
@@ -562,6 +594,7 @@ export class Fido2CliHardwareIdentityProvider implements IHardwareIdentityProvid
         "",
       );
     } finally {
+      interactiveOps--;
       deleteTempFile(tmpFile);
     }
 
