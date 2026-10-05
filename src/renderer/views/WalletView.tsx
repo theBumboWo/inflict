@@ -1,24 +1,47 @@
 // src/renderer/views/WalletView.tsx
 //
-// Displays the active wallet session:
-//   - Wallet address (Base58, 32–44 chars) in a prominent field
-//   - QR code of the wallet address (with error boundary)
-//   - Copy-address button with 2-second "Copied!" confirmation
-//   - Balance in SOL (4 decimal places) or unavailable/loading indicators
-//   - Manual refresh button
-//   - Current credential display name as persistent label
-//   - Informational banner when a second device connects
-//   - "Send" and "Lock wallet" buttons
+// Active wallet screen shown while a hardware-identity session is live.
+//
+// Layout:
+//   ┌─────────────────────────────────────────────────────────┐
+//   │  ● HARDWARE IDENTITY — CONNECTED                        │
+//   │ ─────────────────────────────────────────────────────── │
+//   │  WALLET                                                  │
+//   │  7xKf...9pQ2                      [click to copy]       │
+//   │  "Copied" toast (2 s, dismisses auto)                   │
+//   │ ─────────────────────────────────────────────────────── │
+//   │  0.0000              DEVNET                             │
+//   │  [↓ Receive]  [↑ Send]  [⏻ Disconnect]                  │
+//   └─────────────────────────────────────────────────────────┘
 //
 // SECURITY: This component MUST NEVER display, log, or render private key
 // bytes or Wallet_Seed. Only SessionPublicData is accepted as a prop.
+// (Req 6.6)
 
-import React, { Component, useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  Component,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { QRCodeSVG } from "qrcode.react";
 import type { SessionPublicData } from "../../shared/ipc-types";
 import type { BalanceStatus } from "../hooks/useWalletState";
 
-// ─── QR Code Error Boundary ──────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Truncate a Base58 wallet address to the format `XXXX…XXXX`.
+ * Shows the first 4 and last 4 characters separated by an ellipsis.
+ * Falls back to the full address if it is too short to truncate meaningfully.
+ */
+function truncateAddress(address: string): string {
+  if (address.length <= 11) return address;
+  return `${address.slice(0, 4)}...${address.slice(-4)}`;
+}
+
+// ─── QR Code Error Boundary ───────────────────────────────────────────────────
 
 interface QrBoundaryState {
   hasError: boolean;
@@ -42,19 +65,19 @@ class QrErrorBoundary extends Component<
       return (
         <div
           role="img"
-          aria-label="QR code error"
+          aria-label="QR code unavailable"
           style={{
             width: 160,
             height: 160,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            border: "1px solid #c00",
-            borderRadius: 4,
-            color: "#c00",
-            fontSize: 12,
+            border: "1px solid var(--border-error)",
+            borderRadius: "var(--radius-md)",
+            color: "var(--text-error)",
+            fontSize: "var(--font-size-xs)",
             textAlign: "center",
-            padding: 8,
+            padding: "var(--space-2)",
           }}
         >
           QR code unavailable
@@ -81,19 +104,10 @@ function SecondDeviceBanner({
       role="status"
       aria-live="polite"
       aria-label="Second device connected notification"
-      style={{
-        backgroundColor: "#fff8e1",
-        border: "1px solid #f9a825",
-        borderRadius: 4,
-        padding: "8px 12px",
-        marginBottom: 12,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 8,
-      }}
+      className="alert alert-warning animate-fade-in"
+      style={{ marginBottom: "var(--space-4)" }}
     >
-      <span style={{ fontSize: 14 }}>
+      <span style={{ flex: 1, fontSize: "var(--font-size-sm)" }}>
         Another hardware key was detected ({devicePath}). Connect this key to
         switch wallets.
       </span>
@@ -101,19 +115,49 @@ function SecondDeviceBanner({
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss second device notification"
-        style={{
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          fontWeight: "bold",
-          fontSize: 16,
-          lineHeight: 1,
-          padding: "0 4px",
-        }}
+        className="btn btn-ghost btn-icon"
+        style={{ flexShrink: 0, fontSize: "var(--font-size-md)", lineHeight: 1 }}
       >
         ×
       </button>
     </div>
+  );
+}
+
+// ─── Copied toast ─────────────────────────────────────────────────────────────
+
+interface CopiedToastProps {
+  visible: boolean;
+}
+
+function CopiedToast({ visible }: CopiedToastProps): React.ReactElement | null {
+  if (!visible) return null;
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      aria-label="Address copied confirmation"
+      style={{
+        position: "fixed",
+        bottom: "var(--space-6)",
+        left: "50%",
+        transform: "translateX(-50%)",
+        backgroundColor: "var(--bg-elevated)",
+        border: "1px solid var(--border-accent)",
+        borderRadius: "var(--radius-full)",
+        padding: "var(--space-2) var(--space-5)",
+        fontSize: "var(--font-size-sm)",
+        color: "var(--status-connected)",
+        fontWeight: "var(--font-weight-medium)",
+        letterSpacing: "0.04em",
+        boxShadow: "var(--shadow-md)",
+        pointerEvents: "none",
+        zIndex: 100,
+        animation: "fade-in 160ms ease both",
+      }}
+    >
+      Copied
+    </span>
   );
 }
 
@@ -124,11 +168,13 @@ export interface WalletViewProps {
   balanceStatus: BalanceStatus;
   /** Called when the user triggers a manual balance refresh. */
   onRefreshBalance: () => void;
-  /** Called when the user clicks "Copy address". */
+  /** Called when the user clicks the address to copy it. */
   onCopyAddress: () => void;
+  /** Called when the user opens the Receive screen. */
+  onReceive: () => void;
   /** Called when the user initiates a send transaction. */
   onSend: () => void;
-  /** Called when the user terminates the session. */
+  /** Called when the user terminates the session (Disconnect). */
   onTerminateSession: () => void;
 }
 
@@ -139,10 +185,11 @@ export function WalletView({
   balanceStatus,
   onRefreshBalance,
   onCopyAddress,
+  onReceive,
   onSend,
   onTerminateSession,
 }: WalletViewProps): React.ReactElement {
-  // ── Copy confirmation state ────────────────────────────────────────────────
+  // ── Copy confirmation state ───────────────────────────────────────────────
   const [showCopied, setShowCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -167,9 +214,7 @@ export function WalletView({
     };
   }, []);
 
-  // ── Second-device notification ─────────────────────────────────────────────
-  // Track the most recently connected second device (if any) while session is
-  // active. Cleared when the user dismisses the banner.
+  // ── Second-device notification ────────────────────────────────────────────
   const [secondDevicePath, setSecondDevicePath] = useState<string | null>(null);
 
   useEffect(() => {
@@ -177,9 +222,8 @@ export function WalletView({
       devicePath: string;
       supportsHmacSecret: boolean;
     }): void => {
-      // Only show the banner for devices different from the session's device.
-      // The session doesn't track the device path, so any new connection event
-      // while a session is active is treated as a second device (Req 5.6, 11.2).
+      // Any connection event while a session is active is a second device.
+      // Req 5.6, 11.2
       setSecondDevicePath(data.devicePath);
     };
 
@@ -193,23 +237,40 @@ export function WalletView({
     setSecondDevicePath(null);
   }, []);
 
-  // ── Balance display ────────────────────────────────────────────────────────
-  let balanceDisplay: string;
+  // ── Balance display (Req 7.3, 7.4) ───────────────────────────────────────
+  let balanceSol: string;
+  let balanceUnavailable = false;
+  let balanceLoading = false;
+
   if (balanceStatus.kind === "available") {
-    // Format to exactly 4 decimal places (Req 7.3).
     const parsed = parseFloat(balanceStatus.sol);
-    balanceDisplay = isNaN(parsed)
-      ? balanceStatus.sol
-      : parsed.toFixed(4) + " SOL";
+    balanceSol = isNaN(parsed) ? balanceStatus.sol : parsed.toFixed(4);
   } else if (balanceStatus.kind === "unavailable") {
-    balanceDisplay = "Balance unavailable";
+    balanceSol = "—";
+    balanceUnavailable = true;
   } else {
-    // kind === "idle" — loading on first fetch
-    balanceDisplay = "Loading balance…";
+    // kind === "idle" — first fetch in progress
+    balanceSol = "—";
+    balanceLoading = true;
   }
 
+  // ── Truncated address display (first 4 + "..." + last 4) ─────────────────
+  const truncated = truncateAddress(session.walletAddress);
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <main role="main" aria-label="Wallet">
+    <main
+      role="main"
+      aria-label="Active wallet"
+      className="animate-fade-in"
+      style={{
+        width: "100%",
+        maxWidth: "var(--app-max-width)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 0,
+      }}
+    >
       {/* ── Second-device notification banner ── */}
       {secondDevicePath !== null && (
         <SecondDeviceBanner
@@ -218,109 +279,340 @@ export function WalletView({
         />
       )}
 
-      {/* ── Credential display name (persistent indicator, Req 10.4) ── */}
-      <section aria-label="Active credential">
-        <p
-          aria-label="Active credential display name"
-          style={{ fontWeight: "bold", marginBottom: 4 }}
-        >
-          {session.displayName}
-        </p>
-      </section>
+      {/* ── Header: "HARDWARE IDENTITY — CONNECTED" status line (Req 6) ── */}
+      <header
+        aria-label="Hardware identity status"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+          marginBottom: "var(--space-4)",
+        }}
+      >
+        {/* Green status dot */}
+        <span
+          className="status-dot status-dot--connected"
+          aria-hidden="true"
+          style={{ flexShrink: 0 }}
+        />
 
-      {/* ── Wallet address (Req 6.1) ── */}
-      <section aria-label="Wallet address section">
-        <label htmlFor="wallet-address-field" style={{ display: "block", marginBottom: 4 }}>
-          Wallet Address
-        </label>
-        <output
-          id="wallet-address-field"
-          aria-label="Wallet address"
+        {/* Status text — small caps, muted */}
+        <span
+          aria-label="Hardware identity connected"
           style={{
-            display: "block",
-            fontFamily: "monospace",
-            fontSize: 13,
-            wordBreak: "break-all",
-            padding: "6px 8px",
-            border: "1px solid #ccc",
-            borderRadius: 4,
-            backgroundColor: "#f9f9f9",
-            marginBottom: 8,
+            fontSize: "var(--font-size-xs)",
+            color: "var(--text-tertiary)",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            fontWeight: "var(--font-weight-medium)",
           }}
         >
-          {session.walletAddress}
-        </output>
+          Hardware Identity — Connected
+        </span>
+      </header>
 
-        {/* ── Copy address button (Req 6.2, 6.3) ── */}
+      {/* ── Separator ── */}
+      <hr
+        aria-hidden="true"
+        style={{
+          border: "none",
+          borderTop: "1px solid var(--border-subtle)",
+          marginBottom: "var(--space-6)",
+        }}
+      />
+
+      {/* ── Wallet address section (Req 6.1, 6.2, 6.3) ── */}
+      <section aria-label="Wallet address" style={{ marginBottom: "var(--space-6)" }}>
+        {/* "WALLET" label */}
+        <p
+          style={{
+            fontSize: "var(--font-size-xs)",
+            color: "var(--text-tertiary)",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            marginBottom: "var(--space-2)",
+          }}
+        >
+          Wallet
+        </p>
+
+        {/* Truncated address — large monospace, clickable to copy full address (Req 6.2) */}
         <button
           type="button"
           onClick={handleCopyAddress}
-          aria-label="Copy wallet address to clipboard"
-          style={{ marginRight: 8 }}
+          aria-label={`Wallet address ${session.walletAddress} — click to copy`}
+          title={`Click to copy: ${session.walletAddress}`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-3)",
+            width: "100%",
+            textAlign: "left",
+            background: "none",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+          }}
         >
-          Copy Address
-        </button>
-        {showCopied && (
           <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--font-size-2xl)",
+              fontWeight: "var(--font-weight-semibold)",
+              color: "var(--text-primary)",
+              letterSpacing: "0.02em",
+              lineHeight: "var(--line-height-tight)",
+            }}
+          >
+            {truncated}
+          </span>
+
+          {/* Subtle copy icon hint */}
+          <span
+            aria-hidden="true"
+            style={{
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-tertiary)",
+              flexShrink: 0,
+              opacity: 0.7,
+            }}
+          >
+            ⎘
+          </span>
+        </button>
+
+        {/* Full address — smaller, also triggers copy (Req 6.2) */}
+        <button
+          type="button"
+          onClick={handleCopyAddress}
+          aria-label="Copy full wallet address to clipboard"
+          title="Click to copy full address"
+          className="address-display"
+          style={{
+            display: "block",
+            width: "100%",
+            textAlign: "left",
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border-subtle)",
+            cursor: "pointer",
+            marginTop: "var(--space-3)",
+            transition: "border-color var(--transition-fast), box-shadow var(--transition-fast)",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-accent)";
+            (e.currentTarget as HTMLButtonElement).style.boxShadow = "var(--shadow-accent)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-subtle)";
+            (e.currentTarget as HTMLButtonElement).style.boxShadow = "none";
+          }}
+        >
+          {session.walletAddress}
+        </button>
+      </section>
+
+      {/* ── Separator ── */}
+      <hr
+        aria-hidden="true"
+        style={{
+          border: "none",
+          borderTop: "1px solid var(--border-subtle)",
+          marginBottom: "var(--space-6)",
+        }}
+      />
+
+      {/* ── Balance section (Req 7.3, 7.4) ── */}
+      <section aria-label="Wallet balance" style={{ marginBottom: "var(--space-6)" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-3)",
+            marginBottom: "var(--space-2)",
+            flexWrap: "wrap",
+          }}
+        >
+          {/* SOL amount — large number */}
+          <span
+            aria-live="polite"
+            aria-atomic="true"
+            aria-label={
+              balanceLoading
+                ? "Loading balance"
+                : balanceUnavailable
+                  ? "Balance unavailable"
+                  : `Balance: ${balanceSol} SOL`
+            }
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--font-size-2xl)",
+              fontWeight: "var(--font-weight-semibold)",
+              color: balanceUnavailable || balanceLoading
+                ? "var(--text-tertiary)"
+                : "var(--text-primary)",
+              lineHeight: "var(--line-height-tight)",
+              letterSpacing: "-0.01em",
+              transition: "color var(--transition-base)",
+            }}
+          >
+            {balanceLoading ? (
+              <span className="spinner" aria-label="Loading balance" />
+            ) : (
+              balanceSol
+            )}
+          </span>
+
+          {/* Unit label */}
+          {!balanceLoading && !balanceUnavailable && (
+            <span
+              aria-hidden="true"
+              style={{
+                fontSize: "var(--font-size-base)",
+                color: "var(--text-secondary)",
+                fontWeight: "var(--font-weight-medium)",
+              }}
+            >
+              SOL
+            </span>
+          )}
+
+          {/* DEVNET badge — beside the balance number */}
+          <span
+            aria-label="Solana devnet"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "2px var(--space-3)",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "rgba(0, 229, 255, 0.12)",
+              border: "1px solid var(--border-accent)",
+              fontSize: "var(--font-size-xs)",
+              fontWeight: "var(--font-weight-bold)",
+              color: "var(--accent)",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              flexShrink: 0,
+            }}
+          >
+            Devnet
+          </span>
+        </div>
+
+        {/* Balance unavailable message */}
+        {balanceUnavailable && (
+          <p
             role="status"
             aria-live="polite"
-            aria-label="Address copied confirmation"
-            style={{ fontSize: 13, color: "#2e7d32" }}
+            style={{
+              fontSize: "var(--font-size-xs)",
+              color: "var(--text-error)",
+              margin: 0,
+            }}
           >
-            Copied!
-          </span>
+            Balance unavailable — retrying…
+          </p>
         )}
-      </section>
 
-      {/* ── QR code (Req 6.4, 6.5) ── */}
-      <section aria-label="QR code section" style={{ marginTop: 12 }}>
-        <QrErrorBoundary>
-          <QRCodeSVG
-            value={session.walletAddress}
-            size={160}
-            aria-label={`QR code for wallet address ${session.walletAddress}`}
-            role="img"
-          />
-        </QrErrorBoundary>
-      </section>
-
-      {/* ── Balance display (Req 7.3, 7.4) ── */}
-      <section aria-label="Balance section" style={{ marginTop: 12 }}>
-        <p
-          aria-live="polite"
-          aria-label="Wallet balance"
-          aria-atomic="true"
-          style={{ marginBottom: 8 }}
-        >
-          {balanceDisplay}
-        </p>
+        {/* Refresh button */}
         <button
           type="button"
           onClick={onRefreshBalance}
           aria-label="Refresh wallet balance"
-          style={{ marginRight: 8 }}
+          className="btn btn-ghost btn-sm"
+          style={{ marginTop: "var(--space-2)", paddingLeft: 0 }}
         >
-          Refresh Balance
+          <span aria-hidden="true" style={{ fontSize: "0.9em" }}>↻</span>
+          Refresh
         </button>
       </section>
 
-      {/* ── Actions ── */}
-      <section aria-label="Wallet actions" style={{ marginTop: 16, display: "flex", gap: 8 }}>
-        <button
-          type="button"
-          onClick={onSend}
-          aria-label="Send SOL"
+      {/* ── Action row: [ Receive ] [ Send ] [ Disconnect ] ── */}
+      <section aria-label="Wallet actions" style={{ marginBottom: "var(--space-6)" }}>
+        <div
+          className="action-row"
+          style={{ justifyContent: "stretch", gap: "var(--space-3)" }}
         >
-          Send
-        </button>
-        <button
-          type="button"
-          onClick={onTerminateSession}
-          aria-label="Lock wallet and terminate session"
-        >
-          Lock Wallet
-        </button>
+          {/* Receive */}
+          <button
+            type="button"
+            onClick={onReceive}
+            aria-label="Receive — show address and QR code for receiving funds"
+            className="btn btn-secondary"
+            style={{
+              flex: 1,
+              flexDirection: "column",
+              gap: "var(--space-1)",
+              padding: "var(--space-3) var(--space-2)",
+            }}
+          >
+            <span aria-hidden="true" style={{ fontSize: "1.1em" }}>↓</span>
+            <span style={{ fontSize: "var(--font-size-xs)", letterSpacing: "0.03em" }}>
+              Receive
+            </span>
+          </button>
+
+          {/* Send */}
+          <button
+            type="button"
+            onClick={onSend}
+            aria-label="Send SOL"
+            className="btn btn-primary"
+            style={{
+              flex: 1,
+              flexDirection: "column",
+              gap: "var(--space-1)",
+              padding: "var(--space-3) var(--space-2)",
+            }}
+          >
+            <span aria-hidden="true" style={{ fontSize: "1.1em" }}>↑</span>
+            <span style={{ fontSize: "var(--font-size-xs)", letterSpacing: "0.03em" }}>
+              Send
+            </span>
+          </button>
+
+          {/* Disconnect */}
+          <button
+            type="button"
+            onClick={onTerminateSession}
+            aria-label="Disconnect — terminate session and lock wallet"
+            className="btn btn-danger"
+            style={{
+              flex: 1,
+              flexDirection: "column",
+              gap: "var(--space-1)",
+              padding: "var(--space-3) var(--space-2)",
+            }}
+          >
+            <span aria-hidden="true" style={{ fontSize: "1.1em" }}>⏻</span>
+            <span style={{ fontSize: "var(--font-size-xs)", letterSpacing: "0.03em" }}>
+              Disconnect
+            </span>
+          </button>
+        </div>
       </section>
+
+      {/* ── QR code (Req 6.4, 6.5) ── */}
+      <section
+        aria-label="QR code for wallet address"
+        style={{
+          display: "flex",
+          justifyContent: "center",
+        }}
+      >
+        <div className="qr-container">
+          <QrErrorBoundary>
+            <QRCodeSVG
+              value={session.walletAddress}
+              size={148}
+              role="img"
+              aria-label={`QR code for wallet address ${session.walletAddress}`}
+            />
+          </QrErrorBoundary>
+        </div>
+      </section>
+
+      {/* ── "Copied" toast (Req 6.2, 6.3) ── */}
+      <CopiedToast visible={showCopied} />
     </main>
   );
 }

@@ -23,7 +23,7 @@ The following findings, validated in the requirements document, directly inform 
 | PRF is authenticator-bound (Finding 1) | Same PRF_Output on any machine → portable identity |
 | Discoverable credentials required for cross-machine use (Finding 2) | `requireResidentKey: true` at enrollment |
 | hmac-secret broadly supported on roaming hardware keys (Finding 3) | No device allowlist — use capability flag |
-| libfido2 chosen as CTAP2 integration path (Finding 4) | `@vaultys/webauthn-node` or equivalent; main-process only |
+| node-hid + TypeScript CTAP2 chosen as integration path (Finding 4) | `NodeHidHardwareIdentityProvider`; N-API binary; no system DLLs required |
 | PRF output → HKDF → Ed25519 seed (Finding 5) | Two-step HKDF chain (see §Wallet Derivation) |
 | Platform authenticators must be rejected (Finding 6) | `authenticatorAttachment: "cross-platform"` enforced |
 | Architecture: libfido2 in main process via HardwareIdentityProvider (Finding 7) | All CTAP2 calls go through the abstraction |
@@ -98,6 +98,14 @@ The following findings, validated in the requirements document, directly inform 
 > **All CTAP2 operations and native libfido2 calls execute in the main process only.**  
 > The renderer process runs with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`.  
 > The preload script exposes a minimal typed API via `contextBridge`. No renderer module may `require` or `import` any CTAP2, libfido2, or `@solana/web3.js` module.
+
+### Platform Support Tiers
+
+| Tier | Platform | Status |
+|---|---|---|
+| 1 | Windows 10 1903+ x64 | Fully tested |
+| 2 | macOS 12+ x64/arm64 | Packaged, hardware verification pending |
+| 3 | Linux x64 | Development only |
 
 ### Module Directory Layout
 
@@ -1599,7 +1607,7 @@ The requirements document contains seven validated feasibility findings (Finding
 
 **Finding 2 (Discoverable credentials required)** mandates `requireResidentKey: true` in all credential creation calls. This has a storage implication (device slot capacity) that is surfaced in the UI and documented as a prototype limitation.
 
-**Finding 4 (libfido2 integration path)** drives the entire main-process isolation architecture. The requirement for a libfido2 native addon that cannot run in a sandboxed renderer mandates the IPC-based design where CTAP2 operations are encapsulated in the main process behind `IHardwareIdentityProvider`.
+**Finding 4 (node-hid + TypeScript CTAP2 integration path)** drives the entire main-process isolation architecture. The replacement of `@vaultys/webauthn-node` (libfido2 native addon) with `node-hid` + pure TypeScript CTAP2 removes the dependency on system-installed `fido2.dll`, resolves the Node ABI mismatch with Electron 44, and enables distribution via electron-builder `asarUnpack` without requiring developer tooling on the user's machine. The IPC-based design where CTAP2 operations are encapsulated in the main process behind `IHardwareIdentityProvider` is preserved.
 
 **Finding 5 (PRF output → HKDF → Ed25519)** is implemented exactly as specified: two HKDF-SHA256 steps, the first producing a fixed PRF_Salt constant and the second producing Wallet_Seed from PRF_Output. `Keypair.fromSeed(walletSeed)` creates the final Ed25519 keypair.
 

@@ -3,6 +3,8 @@
   "name": "hardware-wallet-security",
   "version": "0.1.0",
   "description": "Security enforcement power for KeyWallet. Bundles the security steering document, MCP tools for transaction inspection and devnet queries, and the Crypto Security Reviewer agent.",
+  "author" : "BumboWo",
+  "keywords" : "security",
   "extensions": {
     "dev.kiro": {
       "steeringDocuments": [

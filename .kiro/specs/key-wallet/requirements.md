@@ -37,17 +37,39 @@ The CTAP2 `hmac-secret` extension is standardized in the FIDO2 CTAP2 specificati
 
 Platform authenticators (TPM, Touch ID, Windows Hello) may also support PRF but their output is machine-bound via the platform credential store, which **breaks portability**. Platform authenticators MUST NOT be used as the identity source for KeyWallet. Only cross-platform (roaming) hardware authenticators are eligible.
 
-### Finding 4 — Desktop WebAuthn / CTAP2 integration path (VALIDATED ✅)
+### Finding 4 — Desktop FIDO2 integration path: node-hid + TypeScript CTAP2 (REVISED ✅)
 
-Electron's renderer process does NOT expose `navigator.credentials` for security keys with `hmac-secret`/PRF in its embedded Chromium on all platforms. The reliable, vendor-neutral path for a cross-platform desktop application is:
+**Previous approach:** `@vaultys/webauthn-node` (libfido2 native addon) — abandoned.
 
-**Primary path (all platforms):** Use `libfido2` (Yubico's open-source C library) via a Node.js native addon (`@vaultys/webauthn-node` or equivalent). `libfido2` communicates directly with authenticators over USB HID, NFC, and BLE without requiring browser intermediation. It exposes the `hmac-secret` extension natively.
+**Problems with the previous approach:**
+1. The prebuilt `fido2.node` binary requires `fido2.dll` (libfido2 runtime) to be installed separately — not distributable to end users.
+2. The binding's C++ source (`fido2.cc`) never calls `fido_assert_set_hmac_salt` — hmac-secret was not implemented despite the package name suggesting it.
+3. Node ABI mismatch: the prebuilt binary targets a different ABI than Electron 44's embedded Node (ABI 127).
+4. No clear path to bundling in a user-facing installer without requiring developer tooling.
 
-**Secondary path (macOS only):** Electron + Apple AuthenticationServices framework (via `electron-webauthn`), which does support PRF including `hmac-secret`. Only viable on macOS 13+ and does not generalize to Windows/Linux.
+**Chosen approach: `node-hid` + pure TypeScript CTAP2**
 
-**Chosen path:** `libfido2`-based native Node.js integration as the primary path to ensure cross-platform portability. This is wrapped behind a clean `HardwareIdentityProvider` abstraction so alternative implementations can be swapped in.
+`node-hid` v3.x uses N-API: a single binary works across all Node and Electron versions without any ABI-specific rebuild step. The CTAP2 protocol (HID transport + CBOR framing + hmac-secret extension) is implementable entirely in TypeScript. This approach:
+- Requires no system DLLs, no libfido2 install, no compiler on the user's machine
+- Works on Windows 10+ without Administrator rights (FIDO HID devices are accessible to normal processes via Windows 10 1903+ WebAuthn.dll routing at the OS level, or directly via hidapi)
+- Can be bundled via electron-builder `asarUnpack` with zero user-facing install steps
+- Is fully testable with `MockHardwareIdentityProvider` for all automated tests
 
-*Platform note for Windows:* `libfido2` on Windows requires that the application either runs as Administrator or that the device is accessible via the `WebAuthn.dll` Windows API (available on Windows 10 1903+). Windows 10 1903+ exposes a `WebAuthn.dll` that `libfido2` can optionally route through, which avoids the Administrator requirement. This limitation must be documented in the app UI.
+**New implementation class:** `NodeHidHardwareIdentityProvider` in `src/main/hardware/NodeHidHardwareIdentityProvider.ts`
+
+The `Libfido2HardwareIdentityProvider` is DEPRECATED and replaced by `NodeHidHardwareIdentityProvider`.
+
+**CTAP2 HID transport summary:**
+- 64-byte HID packets with CTAPHID framing
+- Channel allocation via CTAPHID_INIT (0x86)
+- CTAP2 commands via CTAPHID_CBOR (0x90)
+- CBOR encoding for all CTAP2 command/response payloads
+- hmac-secret uses PIN protocol 1 or 2 for salt encryption
+
+**Packaging:**
+- `node-hid` listed in `dependencies` (not `devDependencies`)
+- electron-builder `asarUnpack: ["**/node_modules/node-hid/**"]` to unpack the native binary
+- `extraResources` not needed — asarUnpack is sufficient
 
 ### Finding 5 — PRF output → Ed25519 key derivation (VALIDATED ✅)
 
@@ -414,3 +436,49 @@ The architecture uses `libfido2` directly via Node.js native bindings in the Ele
 1. THE KeyWallet project SHALL define a Kiro Power named `hardware-wallet-security` that references by explicit file path or identifier: the security steering document, the MCP transaction inspection tools, and the Crypto_Security_Reviewer agent definition.
 2. THE `hardware-wallet-security` Power SHALL include a README with at minimum the following sections: Capabilities, Exposed Tools, and Enforced Security Rules.
 3. WHERE the `hardware-wallet-security` Power's MCP tools are activated, WHEN an AI assistant session begins, THE Power SHALL load the security steering rules into the AI assistant context.
+
+---
+
+### Requirement 22: Distribution and Packaging
+
+**User Story:** As a user, I want to download and install KeyWallet as a normal desktop application, so that I can use it without installing developer tools, compilers, or native libraries.
+
+#### Acceptance Criteria
+
+1. THE KeyWallet installer SHALL bundle all required native dependencies; users SHALL NOT be required to install Node.js, npm, TypeScript, Python, Visual Studio Build Tools, libfido2, libusb, or any other developer tooling.
+2. THE KeyWallet packaged application SHALL use `node-hid` (N-API) as the sole native dependency for FIDO2 USB HID communication; this package produces a single NAPI binary that works across Electron versions without ABI-specific rebuilds.
+3. THE `node-hid` binary SHALL be included in the packaged application via electron-builder's `asarUnpack` configuration; it SHALL NOT be inside the ASAR archive.
+4. THE production build SHALL fail with a clear diagnostic if the native HID layer cannot be loaded rather than silently falling back to the mock provider.
+5. THE KeyWallet application SHALL support Windows 10 1903+ x64 as Tier 1 (fully tested); macOS 12+ x64/arm64 as Tier 2 (packaged, hardware verification pending); Linux x64 as Tier 3 (development only).
+6. THE Windows installer SHALL be a standard NSIS `.exe` installer produced by electron-builder.
+7. THE packaged application SHALL include a hardware diagnostic screen accessible from the UI that reports: device detected (YES/NO), FIDO2 supported (YES/NO), hmac-secret supported (YES/NO), credential status (FOUND/NOT FOUND), PRF operation (SUCCESS/FAILED without revealing output), derived wallet address (public address only).
+8. WHERE the `node-hid` native module cannot open a FIDO2 HID device on Windows 10 1903+, THE KeyWallet SHALL display a specific error distinguishing between: no device connected, device connected but inaccessible (OS permission), device connected but not FIDO2-capable, FIDO2 device connected but hmac-secret not supported.
+
+---
+
+### Requirement 23: Native FIDO2 HID Architecture
+
+**User Story:** As a developer, I want the FIDO2 hardware integration to use a maintained, distributable native module, so that the application can be packaged and shipped to end users.
+
+#### Acceptance Criteria
+
+1. THE `NodeHidHardwareIdentityProvider` SHALL implement `IHardwareIdentityProvider` using `node-hid` for USB HID communication and a pure TypeScript CTAP2 protocol implementation.
+2. THE CTAP2 implementation SHALL support: `authenticatorGetInfo` (0x04), `authenticatorMakeCredential` (0x01) with hmac-secret extension, `authenticatorGetAssertion` (0x02) with hmac-secret extension, `authenticatorCredentialManagement` (0x0A) for resident credential enumeration.
+3. THE CTAP2 HID transport SHALL follow FIDO HID protocol: 64-byte HID packets, CTAPHID_INIT (0x86) channel allocation, CTAPHID_CBOR (0x90) for CTAP2 commands.
+4. THE hmac-secret extension implementation SHALL correctly: encode the salt using shared secret encryption (PIN protocol 1 or 2), include the extension in the CBOR authenticatorGetAssertion command, decrypt and return the 32-byte hmacOutput.
+5. THE `NodeHidHardwareIdentityProvider` SHALL NOT require any system-installed DLLs, shared libraries, or compiler toolchains on the user's machine beyond what is bundled with the application.
+6. THE provider selection SHALL be explicit: `KEYWALLET_USE_MOCK=1` environment variable or `--mock` CLI flag activates mock; production builds default to real hardware.
+7. IF the CTAP2 PIN protocol implementation is not yet complete, THE implementation SHALL return a clear `CtapError` with code `CTAP2_ERR_NOT_ALLOWED` and message `"PIN protocol not yet implemented"` rather than silently failing or using insecure fallback.
+
+---
+
+### Requirement 24: Production vs Development Provider Selection
+
+**User Story:** As a developer, I want a clear, explicit mechanism for switching between mock and real hardware, so that tests always use the mock and production builds always use real hardware.
+
+#### Acceptance Criteria
+
+1. THE mock provider SHALL only be activated by: running with `NODE_ENV=test`, setting `KEYWALLET_USE_MOCK=1`, or passing `--mock` CLI flag.
+2. THE production packaged application SHALL NEVER activate the mock provider under any normal user action.
+3. THE `src/main/index.ts` bootstrap SHALL log `[hardware] using mock provider` or `[hardware] using real HID provider` at startup (non-secret diagnostic only).
+4. THE build system SHALL set `NODE_ENV=production` in packaged builds so accidental mock activation is prevented.

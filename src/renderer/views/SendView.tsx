@@ -1,12 +1,14 @@
 // src/renderer/views/SendView.tsx
 //
-// Transaction construction and signing flow.
+// Transaction construction and signing flow — polished two-panel redesign.
 //
-// Three-screen state machine:
-//   form        → user enters destination address and SOL amount
-//   confirmation → shows preview (destination, amountSol, estimatedFeeSol)
-//   success     → shows transaction signature
-//   (error is inline within the confirmation screen with retry)
+// State machine:
+//   form         → user enters destination address and SOL amount
+//   previewing   → fetching blockhash / fee estimate (loading state)
+//   confirmation → shows preview summary card; user confirms
+//   signing      → "READY TO SIGN — Touch your security key" state
+//   success      → shows transaction signature
+//   (rpcError is inline within confirmation with retry)
 //
 // IPC channels used:
 //   transaction:validate — validate inputs; returns TransactionValidationError | null
@@ -27,7 +29,7 @@ type TransactionValidationError =
   | { field: "destination"; reason: string }
   | { field: "amount"; reason: string };
 
-type Screen = "form" | "confirmation" | "success";
+type Screen = "form" | "previewing" | "confirmation" | "signing" | "success";
 
 interface FieldErrors {
   destination?: string;
@@ -39,15 +41,26 @@ interface RpcError {
   message: string;
 }
 
+// ─── Address validation indicator ─────────────────────────────────────────────
+
+type AddressValidity = "empty" | "valid" | "invalid";
+
+function getAddressValidity(address: string): AddressValidity {
+  const trimmed = address.trim();
+  if (trimmed === "") return "empty";
+  // Basic base58 + length heuristic for real-time indicator (full validation is server-side)
+  const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  return base58Regex.test(trimmed) ? "valid" : "invalid";
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Convert a SOL string (float) to lamports bigint.  Returns null on invalid input. */
+/** Convert a SOL string (float) to lamports bigint. Returns null on invalid input. */
 function solToLamports(solStr: string): bigint | null {
   const trimmed = solStr.trim();
   if (trimmed === "") return null;
   const num = parseFloat(trimmed);
   if (!isFinite(num) || num < 0) return null;
-  // Multiply by 1e9 and round to the nearest integer.
   const lamports = Math.round(num * 1_000_000_000);
   return BigInt(lamports);
 }
@@ -90,7 +103,6 @@ export function SendView({
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── ARIA IDs ──────────────────────────────────────────────────────────────
-  // useId produces a stable unique ID per component instance.
   const destId = useId();
   const amountId = useId();
   const destErrorId = useId();
@@ -117,14 +129,12 @@ export function SendView({
     };
   }, [destination, amountSol, currentBalanceLamports]);
 
-  // ── Handle "Preview" button click (form → confirmation) ───────────────────
+  // ── Handle "Preview" button click (form → previewing → confirmation) ──────
   const handlePreview = useCallback(async () => {
-    // Clear previous errors.
     setFieldErrors({});
 
     const params = buildTransferParams();
     if (params === null) {
-      // Amount could not be parsed — surface a local error before IPC.
       setFieldErrors({ amount: "Enter a valid SOL amount (e.g. 0.5)." });
       return;
     }
@@ -150,7 +160,9 @@ export function SendView({
       return;
     }
 
-    // Step 2: fetch preview via IPC.
+    // Step 2: fetch preview via IPC (show loading state).
+    setScreen("previewing");
+
     let previewData: TransactionPreview;
     try {
       previewData = (await window.wallet.invoke(
@@ -160,6 +172,7 @@ export function SendView({
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : "Failed to fetch preview.";
+      setScreen("form");
       setFieldErrors({ amount: msg });
       return;
     }
@@ -180,13 +193,14 @@ export function SendView({
     }, 30_000);
   }, []);
 
-  // ── Handle "Confirm & Send" and "Retry" button clicks ─────────────────────
+  // ── Handle "Confirm & Sign" and "Retry" button clicks ─────────────────────
   const handleSubmit = useCallback(async () => {
     const params = buildTransferParams();
     if (params === null) return;
 
     setIsSubmitting(true);
     setRpcError(null);
+    setScreen("signing");
 
     try {
       const result = (await window.wallet.invoke(
@@ -194,7 +208,6 @@ export function SendView({
         params
       )) as { signature: string };
 
-      // Clear retry timer — no longer needed.
       if (retryTimerRef.current !== null) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
@@ -203,12 +216,10 @@ export function SendView({
       setSignature(result.signature);
       setScreen("success");
     } catch (err: unknown) {
-      // Determine error category from the error object if possible.
       let category = "rpc-error";
       let message = "Transaction submission failed. Please try again.";
       if (err instanceof Error) {
         message = err.message;
-        // The main process may encode category in the message with a prefix.
         const match = /^\[([^\]]+)\]\s*(.*)$/.exec(err.message);
         if (match) {
           category = match[1];
@@ -216,6 +227,7 @@ export function SendView({
         }
       }
       setRpcError({ category, message });
+      setScreen("confirmation");
       startRetryTimer();
     } finally {
       setIsSubmitting(false);
@@ -233,127 +245,258 @@ export function SendView({
     setScreen("form");
   }, []);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Shared layout wrapper — two-column shell with persistent network badge
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const addressValidity = getAddressValidity(destination);
+  const hasDestError = Boolean(fieldErrors.destination);
+  const hasAmountError = Boolean(fieldErrors.amount);
+
   // ─── Render: form screen ──────────────────────────────────────────────────
-  if (screen === "form") {
-    const hasDestError = Boolean(fieldErrors.destination);
-    const hasAmountError = Boolean(fieldErrors.amount);
+  if (screen === "form" || screen === "previewing") {
+    const isPreviewing = screen === "previewing";
 
     return (
-      <main role="main" aria-label="Send SOL">
-        <h1>Send SOL</h1>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void handlePreview();
+      <main
+        role="main"
+        aria-label="Send SOL"
+        style={{
+          width: "100%",
+          maxWidth: "var(--app-max-width)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 0,
+        }}
+      >
+        {/* ── Header row ── */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "var(--space-6)",
           }}
-          noValidate
-          aria-label="Send SOL form"
         >
-          {/* ── Destination address ── */}
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor={destId} style={{ display: "block", marginBottom: 4 }}>
-              Destination Address
-            </label>
-            <input
-              id={destId}
-              type="text"
-              value={destination}
-              onChange={(e) => {
-                setDestination(e.target.value);
-                if (fieldErrors.destination) {
-                  setFieldErrors((prev) => ({ ...prev, destination: undefined }));
-                }
-              }}
-              aria-label="Destination Solana address"
-              aria-required="true"
-              aria-invalid={hasDestError}
-              aria-describedby={hasDestError ? destErrorId : undefined}
-              placeholder="Base58 address (32–44 characters)"
-              autoComplete="off"
-              spellCheck={false}
-              style={{
-                display: "block",
-                width: "100%",
-                fontFamily: "monospace",
-                padding: "6px 8px",
-                border: `1px solid ${hasDestError ? "#c00" : "#ccc"}`,
-                borderRadius: 4,
-                boxSizing: "border-box",
-              }}
+          <h1 style={{ margin: 0, fontSize: "var(--font-size-xl)" }}>
+            Send SOL
+          </h1>
+          {/* Network badge — always visible */}
+          <span
+            className="status-chip status-chip--searching"
+            aria-label="Network: Solana Devnet"
+            role="status"
+          >
+            <span
+              className="status-dot status-dot--searching"
+              aria-hidden="true"
             />
-            {hasDestError && (
-              <span
-                id={destErrorId}
-                role="alert"
-                aria-live="assertive"
-                style={{ color: "#c00", fontSize: 13, marginTop: 4, display: "block" }}
-              >
-                {fieldErrors.destination}
-              </span>
-            )}
-          </div>
+            SOLANA DEVNET
+          </span>
+        </div>
 
-          {/* ── Amount (SOL) ── */}
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor={amountId} style={{ display: "block", marginBottom: 4 }}>
-              Amount (SOL)
-            </label>
-            <input
-              id={amountId}
-              type="text"
-              inputMode="decimal"
-              value={amountSol}
-              onChange={(e) => {
-                setAmountSol(e.target.value);
-                if (fieldErrors.amount) {
-                  setFieldErrors((prev) => ({ ...prev, amount: undefined }));
-                }
-              }}
-              aria-label="Amount in SOL"
-              aria-required="true"
-              aria-invalid={hasAmountError}
-              aria-describedby={hasAmountError ? amountErrorId : undefined}
-              placeholder="e.g. 0.5"
-              autoComplete="off"
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "6px 8px",
-                border: `1px solid ${hasAmountError ? "#c00" : "#ccc"}`,
-                borderRadius: 4,
-                boxSizing: "border-box",
-              }}
-            />
-            {hasAmountError && (
-              <span
-                id={amountErrorId}
-                role="alert"
-                aria-live="assertive"
-                style={{ color: "#c00", fontSize: 13, marginTop: 4, display: "block" }}
-              >
-                {fieldErrors.amount}
-              </span>
-            )}
-          </div>
+        {/* ── Input panel ── */}
+        <section
+          aria-label="Transaction inputs"
+          className="card"
+          style={{ marginBottom: "var(--space-4)" }}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handlePreview();
+            }}
+            noValidate
+            aria-label="Send SOL form"
+          >
+            {/* ── Destination address ── */}
+            <div className="field">
+              <label htmlFor={destId}>Destination Address</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  id={destId}
+                  type="text"
+                  className={`input-mono${hasDestError ? " is-error" : ""}`}
+                  value={destination}
+                  onChange={(e) => {
+                    setDestination(e.target.value);
+                    if (fieldErrors.destination) {
+                      setFieldErrors((prev) => ({
+                        ...prev,
+                        destination: undefined,
+                      }));
+                    }
+                  }}
+                  aria-label="Destination Solana address"
+                  aria-required="true"
+                  aria-invalid={hasDestError ? "true" : "false"}
+                  aria-describedby={
+                    hasDestError ? destErrorId : undefined
+                  }
+                  placeholder="Base58 address (32–44 characters)"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={isPreviewing}
+                  style={{ paddingRight: "var(--space-8)" }}
+                />
+                {/* Inline validity indicator dot */}
+                {addressValidity !== "empty" && (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      right: "var(--space-3)",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      width: 8,
+                      height: 8,
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor:
+                        addressValidity === "valid"
+                          ? "var(--status-connected)"
+                          : "var(--status-error)",
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+              </div>
+              {hasDestError && (
+                <span
+                  id={destErrorId}
+                  className="field-error"
+                  role="alert"
+                  aria-live="assertive"
+                >
+                  {fieldErrors.destination}
+                </span>
+              )}
+            </div>
 
-          {/* ── Actions ── */}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="submit"
-              aria-label="Preview transaction"
+            {/* ── Amount (SOL) ── */}
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label htmlFor={amountId}>Amount</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  id={amountId}
+                  type="text"
+                  inputMode="decimal"
+                  className={hasAmountError ? "is-error" : ""}
+                  value={amountSol}
+                  onChange={(e) => {
+                    setAmountSol(e.target.value);
+                    if (fieldErrors.amount) {
+                      setFieldErrors((prev) => ({
+                        ...prev,
+                        amount: undefined,
+                      }));
+                    }
+                  }}
+                  aria-label="Amount in SOL"
+                  aria-required="true"
+                  aria-invalid={hasAmountError ? "true" : "false"}
+                  aria-describedby={
+                    hasAmountError ? amountErrorId : undefined
+                  }
+                  placeholder="0.000000000"
+                  autoComplete="off"
+                  disabled={isPreviewing}
+                  style={{ paddingRight: "4.5rem" }}
+                />
+                {/* SOL label inside input */}
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    right: "var(--space-4)",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    fontSize: "var(--font-size-sm)",
+                    fontWeight: "var(--font-weight-semibold)",
+                    color: "var(--text-tertiary)",
+                    pointerEvents: "none",
+                    userSelect: "none",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  SOL
+                </span>
+              </div>
+              {hasAmountError && (
+                <span
+                  id={amountErrorId}
+                  className="field-error"
+                  role="alert"
+                  aria-live="assertive"
+                >
+                  {fieldErrors.amount}
+                </span>
+              )}
+              {/* Estimated fee hint — shown when we have preview data */}
+              {preview !== null && !hasAmountError && (
+                <span
+                  style={{
+                    display: "block",
+                    marginTop: "var(--space-2)",
+                    fontSize: "var(--font-size-xs)",
+                    color: "var(--text-tertiary)",
+                  }}
+                  aria-label={`Estimated fee: ${preview.estimatedFeeSol} SOL`}
+                >
+                  Est. fee: {preview.estimatedFeeSol} SOL
+                </span>
+              )}
+            </div>
+
+            {/* ── Actions ── */}
+            <div
+              className="action-row"
+              style={{ marginTop: "var(--space-6)" }}
             >
-              Preview
-            </button>
-            <button
-              type="button"
-              onClick={onBack}
-              aria-label="Cancel send and return to wallet"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+              <button
+                type="submit"
+                className="btn btn-primary btn-lg"
+                disabled={isPreviewing || destination.trim() === "" || amountSol.trim() === ""}
+                aria-label="Preview transaction"
+                aria-busy={isPreviewing}
+              >
+                {isPreviewing ? (
+                  <>
+                    <span className="spinner" aria-hidden="true" />
+                    Fetching fee…
+                  </>
+                ) : (
+                  "Preview →"
+                )}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={onBack}
+                disabled={isPreviewing}
+                aria-label="Cancel send and return to wallet"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+
+        {/* ── Hint card ── */}
+        <div
+          className="alert alert-info animate-fade-in"
+          role="note"
+          aria-label="Send information"
+        >
+          <span
+            aria-hidden="true"
+            style={{ fontSize: "1rem", flexShrink: 0, marginTop: 1 }}
+          >
+            ℹ
+          </span>
+          <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+            You will be asked to touch your security key to sign the transaction.
+          </span>
+        </div>
       </main>
     );
   }
@@ -361,84 +504,170 @@ export function SendView({
   // ─── Render: confirmation screen ──────────────────────────────────────────
   if (screen === "confirmation" && preview !== null) {
     return (
-      <main role="main" aria-label="Confirm transaction">
-        <h1>Confirm Transaction</h1>
+      <main
+        role="main"
+        aria-label="Confirm transaction"
+        style={{
+          width: "100%",
+          maxWidth: "var(--app-max-width)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 0,
+        }}
+      >
+        {/* ── Header row ── */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "var(--space-6)",
+          }}
+        >
+          <h1 style={{ margin: 0, fontSize: "var(--font-size-xl)" }}>
+            Review &amp; Sign
+          </h1>
+          <span
+            className="status-chip status-chip--searching"
+            aria-label="Network: Solana Devnet"
+            role="status"
+          >
+            <span
+              className="status-dot status-dot--searching"
+              aria-hidden="true"
+            />
+            SOLANA DEVNET
+          </span>
+        </div>
 
-        <section aria-label="Transaction details">
-          <dl>
-            <div style={{ marginBottom: 8 }}>
-              <dt style={{ fontWeight: "bold" }}>To</dt>
+        {/* ── Preview summary card ── */}
+        <section
+          aria-label="Transaction summary"
+          className="card-elevated animate-fade-in-scale"
+          style={{ marginBottom: "var(--space-4)" }}
+        >
+          <dl aria-label="Transaction details">
+            {/* Recipient */}
+            <div
+              className="data-row"
+              style={{ flexDirection: "column", alignItems: "flex-start", gap: "var(--space-2)", paddingBottom: "var(--space-4)" }}
+            >
+              <dt
+                style={{
+                  fontSize: "var(--font-size-xs)",
+                  fontWeight: "var(--font-weight-medium)",
+                  color: "var(--text-tertiary)",
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Recipient
+              </dt>
               <dd
                 aria-label="Destination address"
-                style={{ fontFamily: "monospace", wordBreak: "break-all", margin: 0 }}
+                className="address-display"
+                style={{ width: "100%", margin: 0 }}
               >
                 {preview.destinationAddress}
               </dd>
             </div>
-            <div style={{ marginBottom: 8 }}>
-              <dt style={{ fontWeight: "bold" }}>Amount</dt>
-              <dd aria-label="Transfer amount in SOL" style={{ margin: 0 }}>
-                {preview.amountSol} SOL
+
+            {/* Amount */}
+            <div className="data-row">
+              <dt className="data-row__label">Amount</dt>
+              <dd
+                className="data-row__value"
+                aria-label={`Transfer amount: ${preview.amountSol} SOL`}
+                style={{ fontSize: "var(--font-size-base)", fontWeight: "var(--font-weight-semibold)", color: "var(--accent)" }}
+              >
+                {preview.amountSol} <span style={{ color: "var(--text-secondary)", fontWeight: "var(--font-weight-regular)", fontFamily: "var(--font-sans)" }}>SOL</span>
               </dd>
             </div>
-            <div style={{ marginBottom: 8 }}>
-              <dt style={{ fontWeight: "bold" }}>Estimated fee</dt>
-              <dd aria-label="Estimated transaction fee in SOL" style={{ margin: 0 }}>
+
+            {/* Estimated fee */}
+            <div className="data-row">
+              <dt className="data-row__label">Estimated fee</dt>
+              <dd
+                className="data-row__value"
+                aria-label={`Estimated transaction fee: ${preview.estimatedFeeSol} SOL`}
+              >
                 {preview.estimatedFeeSol} SOL
               </dd>
             </div>
           </dl>
         </section>
 
-        {/* ── RPC error (inline, with retry) ── */}
+        {/* ── RPC error (inline) ── */}
         {rpcError !== null && (
           <div
             id={rpcErrorId}
+            className="alert alert-error animate-slide-up"
             role="alert"
             aria-live="assertive"
             aria-label="Transaction error"
-            style={{
-              backgroundColor: "#fff0f0",
-              border: "1px solid #c00",
-              borderRadius: 4,
-              padding: "10px 12px",
-              marginBottom: 16,
-            }}
+            style={{ marginBottom: "var(--space-4)" }}
           >
-            <strong>Error ({rpcError.category}):</strong> {rpcError.message}
-            {!retryExpired && (
-              <span style={{ marginLeft: 8, fontSize: 13, color: "#666" }}>
-                (retry available for 30 seconds)
+            <span aria-hidden="true" style={{ fontSize: "1rem", flexShrink: 0 }}>⚠</span>
+            <div style={{ flex: 1 }}>
+              <strong style={{ display: "block", marginBottom: "var(--space-1)" }}>
+                Error ({rpcError.category})
+              </strong>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+                {rpcError.message}
               </span>
-            )}
-            {retryExpired && (
-              <span
-                style={{ marginLeft: 8, fontSize: 13, color: "#c00" }}
-                aria-label="Retry window expired"
-              >
-                Retry window expired.
-              </span>
-            )}
+              {!retryExpired && (
+                <span
+                  style={{
+                    display: "block",
+                    marginTop: "var(--space-1)",
+                    fontSize: "var(--font-size-xs)",
+                    color: "var(--text-tertiary)",
+                  }}
+                >
+                  Retry available for 30 seconds
+                </span>
+              )}
+              {retryExpired && (
+                <span
+                  style={{
+                    display: "block",
+                    marginTop: "var(--space-1)",
+                    fontSize: "var(--font-size-xs)",
+                    color: "var(--status-error)",
+                  }}
+                  aria-label="Retry window expired"
+                >
+                  Retry window expired — go back and try again.
+                </span>
+              )}
+            </div>
           </div>
         )}
 
         {/* ── Actions ── */}
-        <div style={{ display: "flex", gap: 8 }}>
-          {/* Show "Confirm & Send" when no error, or "Retry" when error and within 30s */}
+        <div className="action-row" style={{ marginBottom: "var(--space-3)" }}>
           {rpcError === null ? (
             <button
               type="button"
+              className="btn btn-primary btn-lg"
               onClick={() => void handleSubmit()}
               disabled={isSubmitting}
-              aria-label="Confirm and send transaction"
-              aria-describedby={rpcError !== null ? rpcErrorId : undefined}
+              aria-label="Confirm and sign transaction"
               aria-busy={isSubmitting}
             >
-              {isSubmitting ? "Sending…" : "Confirm & Send"}
+              {isSubmitting ? (
+                <>
+                  <span className="spinner" aria-hidden="true" />
+                  Signing…
+                </>
+              ) : (
+                "Confirm & Sign"
+              )}
             </button>
           ) : (
             <button
               type="button"
+              className="btn btn-primary btn-lg"
               onClick={() => void handleSubmit()}
               disabled={isSubmitting || retryExpired}
               aria-label={
@@ -449,19 +678,143 @@ export function SendView({
               aria-describedby={rpcErrorId}
               aria-busy={isSubmitting}
             >
-              {isSubmitting ? "Retrying…" : "Retry"}
+              {isSubmitting ? (
+                <>
+                  <span className="spinner" aria-hidden="true" />
+                  Retrying…
+                </>
+              ) : (
+                "Retry"
+              )}
             </button>
           )}
 
           <button
             type="button"
+            className="btn btn-ghost"
             onClick={handleBackToForm}
             disabled={isSubmitting}
             aria-label="Go back to send form"
           >
-            Back
+            ← Back
           </button>
         </div>
+      </main>
+    );
+  }
+
+  // ─── Render: signing screen ───────────────────────────────────────────────
+  if (screen === "signing") {
+    return (
+      <main
+        role="main"
+        aria-label="Awaiting hardware key touch"
+        style={{
+          width: "100%",
+          maxWidth: "var(--app-max-width)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 0,
+        }}
+      >
+        {/* ── Header row ── */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "var(--space-6)",
+          }}
+        >
+          <h1 style={{ margin: 0, fontSize: "var(--font-size-xl)" }}>
+            Sign Transaction
+          </h1>
+          <span
+            className="status-chip status-chip--searching"
+            aria-label="Network: Solana Devnet"
+            role="status"
+          >
+            <span
+              className="status-dot status-dot--searching"
+              aria-hidden="true"
+            />
+            SOLANA DEVNET
+          </span>
+        </div>
+
+        {/* ── Signing prompt card ── */}
+        <section
+          aria-label="Security key signing prompt"
+          className="card animate-fade-in-scale"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            padding: "var(--space-10) var(--space-6)",
+            gap: "var(--space-5)",
+            border: "1px solid var(--border-accent)",
+            boxShadow: "var(--shadow-accent)",
+          }}
+        >
+          {/* Animated key icon */}
+          <div
+            aria-hidden="true"
+            style={{
+              fontSize: "3rem",
+              animation: "glow-accent 2s ease-in-out infinite",
+              filter: "drop-shadow(0 0 8px var(--accent))",
+              lineHeight: 1,
+            }}
+          >
+            🔑
+          </div>
+
+          {/* Status label */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "var(--space-2)",
+            }}
+          >
+            <p
+              role="status"
+              aria-live="assertive"
+              aria-atomic="true"
+              style={{
+                margin: 0,
+                fontWeight: "var(--font-weight-semibold)",
+                fontSize: "var(--font-size-md)",
+                color: "var(--accent)",
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                textAlign: "center",
+              }}
+            >
+              READY TO SIGN
+            </p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "var(--font-size-sm)",
+                color: "var(--text-secondary)",
+                textAlign: "center",
+              }}
+            >
+              Touch your security key to authorize this transaction
+            </p>
+          </div>
+
+          {/* Animated progress bar */}
+          <div
+            className="progress-bar progress-bar--indeterminate"
+            aria-hidden="true"
+            style={{ width: "80%", marginTop: "var(--space-2)" }}
+          >
+            <div className="progress-bar__fill" />
+          </div>
+        </section>
       </main>
     );
   }
@@ -469,40 +822,110 @@ export function SendView({
   // ─── Render: success screen ───────────────────────────────────────────────
   if (screen === "success" && signature !== null) {
     return (
-      <main role="main" aria-label="Transaction sent">
-        <h1>Transaction Sent</h1>
+      <main
+        role="main"
+        aria-label="Transaction sent successfully"
+        style={{
+          width: "100%",
+          maxWidth: "var(--app-max-width)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 0,
+        }}
+      >
+        {/* ── Header row ── */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "var(--space-6)",
+          }}
+        >
+          <h1 style={{ margin: 0, fontSize: "var(--font-size-xl)" }}>
+            Sent
+          </h1>
+          <span
+            className="status-chip status-chip--connected"
+            aria-label="Network: Solana Devnet"
+            role="status"
+          >
+            <span
+              className="status-dot status-dot--connected"
+              aria-hidden="true"
+            />
+            SOLANA DEVNET
+          </span>
+        </div>
 
-        <section aria-label="Transaction confirmation">
-          <p>Your transaction was submitted successfully.</p>
-          <div style={{ marginTop: 12 }}>
-            <label
-              htmlFor="tx-signature"
-              style={{ display: "block", fontWeight: "bold", marginBottom: 4 }}
-            >
-              Transaction Signature
-            </label>
-            <output
-              id="tx-signature"
-              aria-label="Transaction signature"
-              style={{
-                display: "block",
-                fontFamily: "monospace",
-                fontSize: 13,
-                wordBreak: "break-all",
-                padding: "6px 8px",
-                border: "1px solid #ccc",
-                borderRadius: 4,
-                backgroundColor: "#f9f9f9",
-              }}
-            >
-              {signature}
-            </output>
+        {/* ── Success card ── */}
+        <section
+          aria-label="Transaction confirmation"
+          className="card animate-fade-in-scale"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            padding: "var(--space-8) var(--space-6)",
+            gap: "var(--space-4)",
+            border: "1px solid rgba(0, 255, 136, 0.25)",
+          }}
+        >
+          <div
+            aria-hidden="true"
+            style={{
+              fontSize: "2.5rem",
+              lineHeight: 1,
+              filter: "drop-shadow(0 0 6px var(--status-connected))",
+            }}
+          >
+            ✓
           </div>
+          <p
+            role="status"
+            aria-live="polite"
+            style={{
+              margin: 0,
+              fontWeight: "var(--font-weight-semibold)",
+              color: "var(--status-connected)",
+              fontSize: "var(--font-size-md)",
+              textAlign: "center",
+            }}
+          >
+            Transaction submitted successfully
+          </p>
         </section>
 
-        <div style={{ marginTop: 16 }}>
+        {/* ── Signature display ── */}
+        <section
+          aria-label="Transaction signature"
+          className="card"
+          style={{ marginTop: "var(--space-4)" }}
+        >
+          <label
+            htmlFor="tx-signature"
+            style={{ marginBottom: "var(--space-3)", display: "block" }}
+          >
+            Transaction Signature
+          </label>
+          <output
+            id="tx-signature"
+            aria-label="Transaction signature"
+            className="tx-signature"
+            style={{ display: "block" }}
+          >
+            {signature}
+          </output>
+        </section>
+
+        {/* ── Actions ── */}
+        <div
+          className="action-row"
+          style={{ marginTop: "var(--space-6)" }}
+        >
           <button
             type="button"
+            className="btn btn-primary btn-lg btn-full"
             onClick={onBack}
             aria-label="Done, return to wallet"
           >
@@ -516,7 +939,15 @@ export function SendView({
   // ─── Fallback (should not be reached) ────────────────────────────────────
   return (
     <main role="main" aria-label="Send SOL">
-      <p>Loading…</p>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          padding: "var(--space-8)",
+        }}
+      >
+        <span className="spinner spinner-lg" aria-label="Loading" />
+      </div>
     </main>
   );
 }

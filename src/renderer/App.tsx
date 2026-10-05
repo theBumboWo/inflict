@@ -15,15 +15,17 @@
 //   │  device connected, no session, 0 or 1 credential ──> EnrollView    │
 //   │  device connected, no session, N>1 credentials ────> CredentialSel.│
 //   │                                                                     │
-//   │  session active, not sending ──────────────────────> WalletView     │
-//   │  session active, send flow ────────────────────────> SendView       │
+//   │  session active, receiving ─────────────────────────> ReceiveView   │
+//   │  session active, sending ───────────────────────────> SendView      │
+//   │  session active, idle ──────────────────────────────> WalletView    │
 //   └─────────────────────────────────────────────────────────────────────┘
 //
 // The `useWalletState` hook provides all state derived from IPC push events.
-// App.tsx owns one piece of local state: `isSending` (whether the send flow
-// is active), because it is pure UI navigation that does not depend on IPC.
+// App.tsx owns local state for active overlay flows: `isSending` and
+// `isReceiving`, because they are pure UI navigation that does not depend
+// on IPC.
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 
 import { useWalletState } from "./hooks/useWalletState";
 import type { CredentialOption } from "./views/CredentialSelectionView";
@@ -35,6 +37,9 @@ import {
 } from "./views/CredentialSelectionView";
 import { WalletView } from "./views/WalletView";
 import { SendView } from "./views/SendView";
+import { ReceiveView } from "./views/ReceiveView";
+import { DiagnosticView } from "./views/DiagnosticView";
+import { HardwareStatusBar } from "./components/HardwareStatusBar";
 
 // ─── App component ────────────────────────────────────────────────────────────
 
@@ -44,6 +49,27 @@ export default function App(): React.ReactElement {
 
   // Local UI state: whether the send flow is active on top of WalletView.
   const [isSending, setIsSending] = useState(false);
+
+  // Local UI state: whether the receive view is active on top of WalletView.
+  const [isReceiving, setIsReceiving] = useState(false);
+
+  // Local UI state: whether the hardware diagnostic panel is visible.
+  // Toggled with Ctrl+Shift+D (or Cmd+Shift+D on macOS).
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+
+  // Register keyboard shortcut for the diagnostic panel.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "D") {
+        e.preventDefault();
+        setIsDiagnosing((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   // ── Handlers ────────────────────────────────────────────────────────────
 
@@ -95,13 +121,77 @@ export default function App(): React.ReactElement {
     setIsSending(false);
   }, []);
 
+  /** Open the receive view. */
+  const handleReceive = useCallback(() => {
+    setIsReceiving(true);
+  }, []);
+
+  /** Close the receive view, return to WalletView. */
+  const handleBackFromReceive = useCallback(() => {
+    setIsReceiving(false);
+  }, []);
+
+  /** Close the diagnostic panel. */
+  const handleCloseDiagnostic = useCallback(() => {
+    setIsDiagnosing(false);
+  }, []);
+
   // ── Routing ─────────────────────────────────────────────────────────────
 
   const { deviceStatus, session, balanceStatus, enrollmentStatus } =
     walletState;
 
-  // 1. Session active: show WalletView or SendView.
+  // Shared status bar rendered on every path.
+  const statusBar = (
+    <HardwareStatusBar
+      deviceStatus={deviceStatus}
+      session={session}
+      enrollmentStatus={enrollmentStatus}
+      lastError={walletState.lastError}
+    />
+  );
+
+  // Diagnostic overlay: shown on top of any view when isDiagnosing is true.
+  if (isDiagnosing) {
+    return (
+      <>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Hardware diagnostic"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            backgroundColor: "rgba(0, 0, 0, 0.75)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+          }}
+        >
+          <DiagnosticView onClose={handleCloseDiagnostic} />
+        </div>
+        {statusBar}
+      </>
+    );
+  }
+
+  // 1. Session active: show WalletView, SendView, or ReceiveView.
   if (session !== null) {
+    if (isReceiving) {
+      return (
+        <>
+          <div className="view-transition">
+            <ReceiveView
+              walletAddress={session.walletAddress}
+              onBack={handleBackFromReceive}
+            />
+          </div>
+          {statusBar}
+        </>
+      );
+    }
     if (isSending) {
       // Derive currentBalanceLamports from balanceStatus for the SendView.
       const currentBalanceLamports =
@@ -109,21 +199,32 @@ export default function App(): React.ReactElement {
           ? BigInt(balanceStatus.lamports)
           : 0n;
       return (
-        <SendView
-          currentBalanceLamports={currentBalanceLamports}
-          onBack={handleBackFromSend}
-        />
+        <>
+          <div className="view-transition">
+            <SendView
+              currentBalanceLamports={currentBalanceLamports}
+              onBack={handleBackFromSend}
+            />
+          </div>
+          {statusBar}
+        </>
       );
     }
     return (
-      <WalletView
-        session={session}
-        balanceStatus={balanceStatus}
-        onRefreshBalance={handleRefreshBalance}
-        onCopyAddress={handleCopyAddress}
-        onSend={handleSend}
-        onTerminateSession={handleTerminateSession}
-      />
+      <>
+        <div className="view-transition">
+          <WalletView
+            session={session}
+            balanceStatus={balanceStatus}
+            onRefreshBalance={handleRefreshBalance}
+            onCopyAddress={handleCopyAddress}
+            onReceive={handleReceive}
+            onSend={handleSend}
+            onTerminateSession={handleTerminateSession}
+          />
+        </div>
+        {statusBar}
+      </>
     );
   }
 
@@ -131,11 +232,23 @@ export default function App(): React.ReactElement {
 
   // 2a. No device or unsupported device → IdleView.
   if (deviceStatus.kind === "none") {
-    return <IdleView />;
+    return (
+      <>
+        <div className="view-transition"><IdleView /></div>
+        {statusBar}
+      </>
+    );
   }
 
   if (deviceStatus.kind === "unsupported") {
-    return <IdleView unsupportedReason={deviceStatus.reason} />;
+    return (
+      <>
+        <div className="view-transition">
+          <IdleView unsupportedReason={deviceStatus.reason} />
+        </div>
+        {statusBar}
+      </>
+    );
   }
 
   // 2b. Device connected — determine enrollment / credential state.
@@ -148,17 +261,22 @@ export default function App(): React.ReactElement {
   // Until credentials have been queried, show EnrollView (which the main
   // process will transition away from once derivation succeeds).
   return (
-    <DeviceConnectedRouter
-      devicePath={deviceStatus.device.devicePath}
-      enrollmentStage={
-        enrollmentStatus.kind === "in-progress"
-          ? enrollmentStatus.stage
-          : "idle"
-      }
-      onEnroll={handleEnroll}
-      onCancelEnroll={handleCancelEnroll}
-      onSelectCredential={handleSelectCredential}
-    />
+    <>
+      <div className="view-transition">
+        <DeviceConnectedRouter
+          devicePath={deviceStatus.device.devicePath}
+          enrollmentStage={
+            enrollmentStatus.kind === "in-progress"
+              ? enrollmentStatus.stage
+              : "idle"
+          }
+          onEnroll={handleEnroll}
+          onCancelEnroll={handleCancelEnroll}
+          onSelectCredential={handleSelectCredential}
+        />
+      </div>
+      {statusBar}
+    </>
   );
 }
 

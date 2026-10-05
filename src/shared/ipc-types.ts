@@ -1,6 +1,6 @@
 // src/shared/ipc-types.ts
 
-// ─── Outgoing (renderer → main) ───────────────────────────────────────────────
+// â”€â”€â”€ Outgoing (renderer â†’ main) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export type IpcRequest =
   | { channel: "device:list" }
   | { channel: "enrollment:start"; payload: { displayName: string } }
@@ -15,9 +15,12 @@ export type IpcRequest =
   | { channel: "transaction:validate"; payload: TransferParams }
   | { channel: "transaction:preview"; payload: TransferParams }
   | { channel: "transaction:submit"; payload: TransferParams }
-  | { channel: "address:copy" };
+  | { channel: "address:copy" }
+  | { channel: "prf:enroll"; payload: { credentialId: string; prfOutput: number[]; displayName: string } }
+  | { channel: "prf:derive"; payload: { credentialId: string; prfOutput: number[] } }
+  | { channel: "hardware:diagnose" };
 
-// ─── Incoming (main → renderer via event) ─────────────────────────────────────
+// â”€â”€â”€ Incoming (main â†’ renderer via event) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export type IpcEvent =
   | { event: "device:connected"; data: { devicePath: string; supportsHmacSecret: boolean } }
   | { event: "device:removed"; data: { devicePath: string } }
@@ -73,7 +76,21 @@ export interface TransactionPreview {
   blockhash: string;
 }
 
-// ─── Preload bridge API types ─────────────────────────────────────────────────
+/** Diagnostic result for hardware:diagnose IPC channel (Req 22.7) */
+export interface DiagnosticResult {
+  deviceDetected: boolean;
+  fido2Supported: boolean;
+  hmacSecretSupported: boolean;
+  credentialFound: boolean;
+  prfOperationResult: string;
+  derivedWalletAddress: string | null;
+  devicePath: string | null;
+  extensions: string[];
+  versions: string[];
+  error: string | null;
+}
+
+// â”€â”€â”€ Preload bridge API types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // These types are defined here (in shared/) so both the preload script and the
 // renderer can import them without crossing tsconfig boundaries.
@@ -121,10 +138,10 @@ export type EventListener<E extends EventName> = (data: DataFor<E>) => void;
 /**
  * The typed wallet API exposed to the renderer via `window.wallet`.
  *
- * `invoke`  — sends a request to the main process and returns a Promise with
+ * `invoke`  â€” sends a request to the main process and returns a Promise with
  *             the handler's resolved value.
- * `on`      — subscribes to a push event from the main process.
- * `off`     — unsubscribes a previously registered listener.
+ * `on`      â€” subscribes to a push event from the main process.
+ * `off`     â€” unsubscribes a previously registered listener.
  */
 export interface WalletApi {
   /**
@@ -149,3 +166,4 @@ export interface WalletApi {
    */
   off<E extends EventName>(event: E, listener: EventListener<E>): void;
 }
+

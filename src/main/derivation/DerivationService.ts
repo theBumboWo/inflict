@@ -1,4 +1,4 @@
-// src/main/derivation/DerivationService.ts
+﻿// src/main/derivation/DerivationService.ts
 
 import { Keypair } from "@solana/web3.js";
 import type { CtapErrorCode } from "../hardware/types";
@@ -27,6 +27,12 @@ export interface IDerivationService {
     credentialId: Uint8Array,
     signal: AbortSignal
   ): Promise<DerivationResult | DerivationError>;
+
+  /**
+   * Derives a wallet directly from a PRF output (e.g. from browser WebAuthn prf extension).
+   * Zero-overwrites prfOutputCopy immediately after use.
+   */
+  deriveFromPrfOutput(prfOutput: Uint8Array): DerivationResult;
 }
 
 export class DerivationService implements IDerivationService {
@@ -86,7 +92,7 @@ export class DerivationService implements IDerivationService {
         return { kind: "user-cancelled" };
       }
 
-      // PRF_Output — must be zero-overwritten in finally
+      // PRF_Output â€” must be zero-overwritten in finally
       hmacOutput = assertionResult.hmacOutput;
 
       // Step 2: Derive Wallet_Seed via HKDF-SHA256
@@ -114,4 +120,45 @@ export class DerivationService implements IDerivationService {
       }
     }
   }
+
+  /**
+   * Derives a wallet directly from a PRF output received from the renderer
+   * (browser WebAuthn prf extension result).
+   *
+   * This is used when CTAP2 operations are performed in the renderer via
+   * navigator.credentials, with only the 32-byte PRF output sent to main.
+   *
+   * Zero-overwrites the copy of prfOutput and walletSeed immediately after use.
+   */
+  deriveFromPrfOutput(prfOutput: Uint8Array): DerivationResult {
+    if (prfOutput.byteLength !== 32) {
+      throw new Error(`PRF output must be 32 bytes, got ${prfOutput.byteLength}`);
+    }
+
+    // Work on a mutable copy so we can zero it
+    const hmacOutput = new Uint8Array(prfOutput);
+    let walletSeed: Buffer | null = null;
+
+    try {
+      // Step 1: Derive Wallet_Seed via HKDF-SHA256
+      walletSeed = hkdf(
+        hmacOutput,
+        Buffer.alloc(0),
+        Buffer.from("key-wallet:solana:ed25519:v1", "utf8"),
+        32
+      );
+
+      // Step 2: Construct the Ed25519 keypair from the 32-byte seed
+      const keypair = Keypair.fromSeed(walletSeed);
+      const walletAddress = keypair.publicKey.toBase58();
+      return { keypair, walletAddress };
+    } finally {
+      // Zero-overwrite both sensitive buffers (Req security rule 3)
+      hmacOutput.fill(0);
+      if (walletSeed !== null) {
+        walletSeed.fill(0);
+      }
+    }
+  }
 }
+

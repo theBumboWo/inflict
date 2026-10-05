@@ -17,8 +17,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 import type {
-  IpcRequest,
-  IpcEvent,
   RequestChannel,
   EventName,
   PayloadFor,

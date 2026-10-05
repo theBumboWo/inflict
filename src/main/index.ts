@@ -10,7 +10,8 @@
 //  - Never forward raw CTAP2 error codes or any secret material to the renderer.
 //
 // Hardware provider strategy:
-//  - Uses MockHardwareIdentityProvider until task 24 (Libfido2HardwareIdentityProvider).
+//  - Uses NodeHidHardwareIdentityProvider by default.
+//  - Falls back to MockHardwareIdentityProvider when NODE_ENV==="test" or KEYWALLET_USE_MOCK==="1".
 
 import path from "node:path";
 
@@ -28,9 +29,11 @@ import type { BalanceResult } from "./solana/SolanaService";
 import { TransactionService } from "./transaction/TransactionService";
 import { createCredentialStore } from "./storage/CredentialStore";
 
-// â”€â”€ Hardware provider (mock until Task 24) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// When Libfido2HardwareIdentityProvider is added, swap this import.
+// ── Hardware provider selection ────────────────────────────────────────────────────────────────────
+// Use MockHardwareIdentityProvider when NODE_ENV==='test' or KEYWALLET_USE_MOCK==='1'.
+// Otherwise use NodeHidHardwareIdentityProvider for real hardware access.
 import { MockHardwareIdentityProvider } from "./hardware/MockHardwareIdentityProvider";
+import { NodeHidHardwareIdentityProvider } from "./hardware/NodeHidHardwareIdentityProvider";
 
 // â”€â”€ Shared types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import type {
@@ -41,6 +44,66 @@ import type {
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+// -- Native module path resolution (Req 22.3) ---------------------------------
+//
+// node-hid ships an N-API binary (.node file) that must live *outside* the ASAR
+// archive when the app is packaged.  electron-builder's `asarUnpack` config in
+// package.json handles this automatically:
+//
+//   "asarUnpack": ["**/node_modules/node-hid/**"]
+//
+// At runtime this results in:
+//
+//   PACKAGED (app.isPackaged === true)
+//   ---------------------------------
+//   * The ASAR archive is at  <resources>/app.asar
+//   * node-hid is unpacked to <resources>/app.asar.unpacked/node_modules/node-hid/
+//   * Electron's module resolver checks app.asar.unpacked first, so
+//     `require('node-hid')` resolves to the unpacked copy automatically -- no
+//     manual path manipulation needed.
+//
+//   DEVELOPMENT (app.isPackaged === false, e.g. npm start / npm run dev)
+//   --------------------------------------------------------------------
+//   * No ASAR archive; node-hid lives in the project's node_modules/.
+//   * `require('node-hid')` resolves through the standard Node.js module
+//     search path starting at __dirname.
+//
+// Neither case requires explicit path overrides; the standard `import HID from
+// "node-hid"` statement in NodeHidHardwareIdentityProvider.ts is sufficient.
+// The startup probe below logs the outcome so packaging regressions are caught
+// immediately on launch rather than silently at first hardware interaction.
+
+/**
+ * Probe that node-hid can be loaded from wherever the app is running.
+ * Called once during app bootstrap (before any window is created).
+ *
+ * In dev mode this verifies the node_modules copy; in a packaged app it
+ * confirms Electron found the asar-unpacked binary.
+ *
+ * Req 22.4: the production build MUST fail with a clear diagnostic if the
+ * native HID layer cannot be loaded rather than silently falling back to the
+ * mock provider.
+ */
+function probeNativeHidModule(): void {
+  const env = app.isPackaged ? "packaged" : "development";
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("node-hid");
+    console.log(`[hardware] node-hid loaded successfully (${env})`);
+  } catch (e) {
+    // Log the full error -- in production builds this surfaces in the Electron
+    // log file (~/Library/Logs/KeyWallet on macOS, %APPDATA%\KeyWallet\logs
+    // on Windows).  The UI will receive a 'device:unsupported' event once
+    // DeviceMonitor fails its first poll.
+    console.error(`[hardware] Failed to load node-hid (${env}):`, e);
+  }
+}
+
+// Run the probe immediately at module load time so the result appears at the
+// top of the log output, before any window or IPC handler is registered.
+probeNativeHidModule();
+
+// -- Constants ----------------------------------------------------------------
 /** Devnet periodic balance refresh interval (30 seconds). */
 const BALANCE_REFRESH_INTERVAL_MS = 30_000;
 
@@ -51,7 +114,16 @@ const RP_ID = "key-wallet.local";
 // Service bootstrap
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const hardwareProvider = new MockHardwareIdentityProvider();
+const useMock =
+  process.env.NODE_ENV === "test" || process.env.KEYWALLET_USE_MOCK === "1";
+if (useMock) {
+  console.log("[hardware] using mock provider");
+} else {
+  console.log("[hardware] using real HID provider");
+}
+const hardwareProvider = useMock
+  ? new MockHardwareIdentityProvider()
+  : new NodeHidHardwareIdentityProvider();
 const credentialStore = createCredentialStore(app);
 const sessionService = new SessionService();
 const solanaService = new SolanaService();
@@ -540,6 +612,72 @@ ipcMain.handle(
 );
 
 // â”€â”€ address:copy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- hardware:diagnose ---------------------------------------------------------
+// Req 22.7: Returns a safe, non-secret diagnostic snapshot of the connected
+// hardware device. No PRF output, seeds, private keys, or any secret material
+// is included in the response.
+ipcMain.handle("hardware:diagnose", async () => {
+  try {
+    const devices = await hardwareProvider.listDevices();
+    const device = devices[0] ?? null;
+
+    if (!device) {
+      return {
+        deviceDetected: false,
+        fido2Supported: false,
+        hmacSecretSupported: false,
+        credentialFound: false,
+        prfOperationResult: "not tested",
+        derivedWalletAddress: null,
+        devicePath: null,
+        extensions: [],
+        versions: [],
+        error: null,
+      };
+    }
+
+    // Check for stored credentials on this device (no PRF/derivation performed).
+    const discoveryResult = await hardwareProvider.discoverCredentials(
+      device.devicePath,
+      RP_ID
+    );
+    const credentialFound = discoveryResult.credentials.length > 0;
+
+    // versions is not exposed by DeviceInfo; return empty array.
+    // The real Libfido2 provider may populate this in the future.
+    const versions: string[] = [];
+
+    return {
+      deviceDetected: true,
+      fido2Supported: true,
+      hmacSecretSupported: device.supportsHmacSecret,
+      credentialFound,
+      prfOperationResult: "not tested",
+      derivedWalletAddress: null,
+      devicePath: device.devicePath,
+      extensions: device.extensions ?? [],
+      versions,
+      error: null,
+    };
+  } catch (err) {
+    // Surface a safe error description; never include raw CTAP2 codes.
+    const safeError =
+      err instanceof Error ? err.message : "Hardware diagnostic failed";
+    return {
+      deviceDetected: false,
+      fido2Supported: false,
+      hmacSecretSupported: false,
+      credentialFound: false,
+      prfOperationResult: "not tested",
+      derivedWalletAddress: null,
+      devicePath: null,
+      extensions: [],
+      versions: [],
+      error: safeError,
+    };
+  }
+});
+
 ipcMain.handle("address:copy", () => {
   const session = requireSession();
   clipboard.writeText(session.walletAddress);

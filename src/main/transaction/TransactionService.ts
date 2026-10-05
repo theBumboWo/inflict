@@ -49,7 +49,7 @@ const DEVNET_RPC = "https://api.devnet.solana.com";
 const REJECTED_CLUSTER_NAMES = new Set(["mainnet-beta", "testnet"]);
 
 /** Blockhash validity window (Req 8.4) */
-const BLOCKHASH_MAX_AGE_MS = 60_000;
+const _BLOCKHASH_MAX_AGE_MS = 60_000;
 
 /** Hold signed tx in memory for up to 30s to allow one retry (Req 8.10) */
 const RETRY_HOLD_MS = 30_000;

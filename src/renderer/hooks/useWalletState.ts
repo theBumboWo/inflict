@@ -12,7 +12,6 @@ import type {
   SessionPublicData,
   ErrorCategory,
   EnrollmentState,
-  EventName,
   EventListener,
 } from "../../shared/ipc-types";
 

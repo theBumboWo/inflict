@@ -374,6 +374,192 @@ All CTAP2 operations are isolated to the Electron main process. A `HardwareIdent
 - [x] 32. Final checkpoint — All tests pass
   - Run `vitest run` and `npm run build`. Ensure zero TypeScript errors and all tests pass. Ask the user if any questions arise.
 
+- [x] 33. Architecture migration: node-hid + TypeScript CTAP2
+  - [x] 33.1 Install `node-hid` as a runtime dependency and configure electron-builder for native module packaging
+    - Run `npm install node-hid@3.1.1 --save-exact`
+    - Run `npm install --save-dev @electron/rebuild`
+    - Update `package.json` build config: add `asarUnpack: ["**/node_modules/node-hid/**"]`
+    - Add `"postinstall": "electron-rebuild"` to scripts
+    - Verify `node-hid` loads in Electron: `node -e "require('node-hid')"`
+    - _Requirements: Req 22.2, Req 22.3_
+
+  - [x] 33.2 Create `src/main/hardware/ctap2/` directory with CTAP2 HID transport layer
+    - Create `src/main/hardware/ctap2/types.ts` with CTAP2 command codes (0x01 makeCredential, 0x02 getAssertion, 0x04 getInfo, 0x0A credentialManagement), CTAPHID command codes (0x06 CTAPHID_WINK, 0x86 CTAPHID_INIT, 0x90 CTAPHID_CBOR, 0x3F CTAPHID_ERROR), CTAP2 error codes
+    - Create `src/main/hardware/ctap2/hid-transport.ts` implementing CTAPHID framing: `sendCtaphidMessage(device, cmd, data)` and `receiveCtaphidMessage(device)` using 64-byte HID packets, channel allocation, sequencing
+    - Create `src/main/hardware/ctap2/cbor.ts` with minimal CBOR encoder/decoder sufficient for CTAP2 messages (or use `cbor-x` npm package)
+    - _Requirements: Req 23.3_
+
+  - [x] 33.3 Implement CTAP2 authenticatorGetInfo in `src/main/hardware/ctap2/get-info.ts`
+    - `getInfo(device: HID.HID): Promise<AuthenticatorInfo>` sends command 0x04, parses CBOR response map
+    - Extract: `versions`, `extensions`, `aaguid`, `options` (rk, up, uv, clientPin, credMgmt)
+    - Map `extensions.includes("hmac-secret")` → `supportsHmacSecret`
+    - Map `options.rk === true` → `supportsResidentKey`
+    - Map `options.clientPin` → `clientPin` boolean
+    - _Requirements: Req 1.5, Req 23.2_
+
+  - [x] 33.4 Implement CTAP2 authenticatorMakeCredential in `src/main/hardware/ctap2/make-credential.ts`
+    - `makeCredential(device, params): Promise<MakeCredentialResult>` sends command 0x01
+    - Build CBOR request map with: clientDataHash, rp {id, name}, user {id, name, displayName}, pubKeyCredParams [{type, alg: -7}], options {rk: true, uv: true}, extensions {hmac-secret: true}
+    - Parse CBOR response: extract credentialId from authData (attestedCredentialData), verify hmac-secret extension was acknowledged
+    - Return `{ credentialId: Uint8Array, authenticatorAttachment: "cross-platform" }`
+    - _Requirements: Req 2.2, Req 23.2_
+
+  - [x] 33.5 Implement CTAP2 authenticatorGetAssertion WITH hmac-secret in `src/main/hardware/ctap2/get-assertion.ts`
+    - `getAssertion(device, params): Promise<GetAssertionResult>` sends command 0x02
+    - Build CBOR request with: rpId, clientDataHash, allowList [{id: credentialId, type: "public-key"}], options {uv: true}, extensions {hmac-secret: encrypted_salt}
+    - Implement PIN protocol 1 (ECDH key agreement + AES-256-CBC): `getPinToken` → `encryptSalt(salt, sharedSecret)` → include in extensions
+    - Parse CBOR response: decrypt hmac-secret output using shared secret → return 32-byte `hmacOutput`
+    - This is the critical path: the 32-byte `hmacOutput` is the PRF_Output used for wallet derivation
+    - _Requirements: Req 4.1, Req 23.2, Req 23.4_
+
+  - [x] 33.6 Implement CTAP2 credential management (enumerateCredentials) in `src/main/hardware/ctap2/credential-management.ts`
+    - `enumerateResidentCredentials(device, rpId): Promise<ResidentCredential[]>` sends command 0x0A
+    - Use subcommand 0x03 (enumerateCredentialsBegin) and 0x04 (enumerateCredentialsGetNextCredential)
+    - Return array of `{ credentialId, userDisplayName, userId }` for the given rpId
+    - Apply 10-second timeout
+    - _Requirements: Req 3.1, Req 23.2_
+
+  - [x] 33.7 Create `NodeHidHardwareIdentityProvider` implementing `IHardwareIdentityProvider`
+    - File: `src/main/hardware/NodeHidHardwareIdentityProvider.ts`
+    - `listDevices()`: call `HID.devices()`, filter by usage page 0xF1D0 (FIDO), open each, call `getInfo()`, map to `DeviceInfo`
+    - `discoverCredentials(devicePath, rpId)`: open device, call `enumerateResidentCredentials(device, rpId)`, close device
+    - `createCredential(devicePath, options)`: open device, call `makeCredential(device, ...)`, close device
+    - `getAssertion(devicePath, options)`: open device, call `getAssertion(device, ...)`, close device, return `AssertionResult` with `hmacOutput`
+    - Open/close device around each operation; handle device errors; map to `CtapError`
+    - _Requirements: Req 23.1, Req 23.5_
+
+  - [x] 33.8 Update `src/main/index.ts` to use `NodeHidHardwareIdentityProvider` in production
+    - Add provider selection logic: if `process.env.NODE_ENV === 'test'` or `process.env.KEYWALLET_USE_MOCK === '1'` → MockHardwareIdentityProvider; else → NodeHidHardwareIdentityProvider
+    - Add startup log: `console.log('[hardware] using mock provider')` or `[hardware] using real HID provider`
+    - Remove the TODO comment about "swap this import"
+    - _Requirements: Req 24.1, Req 24.2, Req 24.3_
+
+  - [x] 33.9 Add hardware diagnostic IPC handler `hardware:diagnose`
+    - Add `hardware:diagnose` to `IpcRequest` in `src/shared/ipc-types.ts`
+    - Implement handler in `src/main/index.ts`: list FIDO HID devices, for first device run getInfo, return structured diagnostic: `{ deviceDetected, fido2Supported, hmacSecretSupported, credentialFound, prfOperationResult, derivedWalletAddress }`
+    - Never include PRF output, seeds, or private keys in the diagnostic response
+    - Add corresponding `DiagnosticView` component in `src/renderer/views/DiagnosticView.tsx` accessible from the UI
+    - _Requirements: Req 22.7_
+
+- [x] 34. Electron packaging for distribution
+  - [x] 34.1 Configure electron-builder for proper native module packaging
+    - Update `package.json` build config: `asarUnpack: ["**/node_modules/node-hid/**"]`
+    - Configure Windows NSIS target: `win: { target: "nsis" }` with proper `installerIcon`, `productName: "KeyWallet"`, `appId: "com.keywallet.app"`
+    - Add `afterSign` hook placeholder for future code signing
+    - Verify electron-builder version supports current Electron 44
+    - _Requirements: Req 22.1, Req 22.6_
+
+  - [x] 34.2 Add application icons and branding assets
+    - Create `assets/` directory
+    - Add `assets/icon.ico` (256x256 Windows icon) — use a simple placeholder if a designer-created icon is not available
+    - Add `assets/icon.png` (512x512 for macOS/Linux)
+    - Reference icons in electron-builder config
+    - Ensure no "Electron" branding appears to users
+    - _Requirements: Req 22.6_
+
+  - [x] 34.3 Add production path resolution for native modules
+    - Verify that `require('node-hid')` works correctly from both development (`npm start`) and packaged (`npm run dist`) paths
+    - Test that `app.isPackaged` flag correctly distinguishes environments
+    - Ensure `asarUnpack` puts `HID.node` in `app.asar.unpacked/node_modules/node-hid/` and that `node-hid` loads from there
+    - _Requirements: Req 22.3_
+
+  - [x] 34.4 Build and verify Windows installer
+    - Run `npm run dist` and verify `release/KeyWallet Setup*.exe` is produced
+    - Verify installer size is reasonable (includes Electron + node-hid, not raw dev deps)
+    - Verify installed application launches without developer tools present
+    - Document known limitation: code signing not configured (SmartScreen warning expected on first run)
+    - _Requirements: Req 22.6_
+
+- [x] 35. Hardware integration smoke test
+  - [x] 35.1 Write `test/integration/hardware-hid.integration.test.ts` as a SKIPPED test (requires real hardware)
+    - Mark with `describe.skip` or `it.skip` — never runs in CI
+    - Documents the manual test procedure: insert YubiKey → run test → verify output matches expected wallet address
+    - Test: device detected, FIDO2 supported, hmac-secret supported, credential found or created, PRF operation returns 32 bytes, same credential produces same wallet address on two calls
+    - Verify: wallet address from test matches wallet address shown in UI
+    - _Requirements: Req 22.7, Req 4.9_
+
+- [x] 36. Major UI/aesthetic polish
+  - [x] 36.1 Create unified design system in `src/renderer/styles.css` (or `styles/`)
+    - Dark theme: `--bg-primary: #0d0d0f`, `--bg-surface: #141418`, `--bg-elevated: #1a1a20`
+    - Accent color: `--accent: #00e5ff` (single restrained cyan accent)
+    - Typography: `--font-sans: 'Inter', 'SF Pro Display', system-ui` and `--font-mono: 'JetBrains Mono', 'Fira Code', monospace`
+    - Status colors: connected `#00ff88`, searching `#ffcc00`, error `#ff4455`, disconnected `#555566`
+    - Spacing scale, border-radius, transition variables
+    - _Requirements: Req 12 (visual quality implicitly required for a polished product)_
+
+  - [x] 36.2 Redesign `IdleView.tsx` — hardware connection screen
+    - Full-screen centered layout on dark background
+    - "KEYWALLET" wordmark at top in small-caps, letter-spaced
+    - "HARDWARE IDENTITY" subtitle in muted small monospace
+    - Large centered hardware key icon (SVG, not emoji) with subtle pulse animation when searching
+    - "Insert your security key" primary text
+    - Hardware status indicator: `● SEARCHING` (amber pulse) / `● CONNECTED` (green) / `● UNSUPPORTED` (red)
+    - Unsupported device error shown inline below the icon, not as an alert
+    - _Requirements: Req 1.3, Req 12_
+
+  - [x] 36.3 Redesign `EnrollView.tsx` — enrollment flow
+    - Retain same state machine (checking-pin, awaiting-touch, etc.) but with polished visual treatment
+    - Step indicator showing current enrollment stage
+    - "Touch your key" state: animated touch ripple on the key icon
+    - PIN guidance shown as a collapsible info box, not a modal
+    - Name input: minimal underline input with floating label
+    - Cancel is a subtle text link, not a large button
+    - _Requirements: Req 2.1, Req 2.6_
+
+  - [x] 36.4 Redesign `WalletView.tsx` — active wallet screen
+    - Header: small "HARDWARE IDENTITY — CONNECTED" status line with green dot
+    - Wallet section: "Wallet" label, then the truncated address `7xK...9pQ` in large monospace
+    - Full address copyable on click — copy confirmation via a brief "Copied" toast, not an alert
+    - Balance: large SOL number with "DEVNET" badge beside it
+    - Action row: [ Receive ] [ Send ] [ Disconnect ] as icon+label buttons
+    - Subtle separator between header and wallet content
+    - _Requirements: Req 6, Req 7_
+
+  - [x] 36.5 Redesign `SendView.tsx` — transaction flow
+    - Two-panel layout: input panel → preview/signing panel
+    - Recipient input: address field with inline validation indicator
+    - Amount input: numeric with SOL label, estimated fee shown below
+    - Preview panel: clean summary card before signing
+    - "READY TO SIGN — Touch your security key" signing state with key animation
+    - Network indicator: "SOLANA DEVNET" badge always visible
+    - _Requirements: Req 8_
+
+  - [x] 36.6 Add ReceiveView
+    - Show full wallet address in large monospace
+    - QR code centered
+    - "SOLANA DEVNET" label — prominent, cannot be missed
+    - One-click copy button
+    - Back navigation
+    - _Requirements: Req 6.1, Req 6.4_
+
+  - [x] 36.7 Add hardware status indicator component and smooth view transitions
+    - Create `src/renderer/components/HardwareStatusBar.tsx` — persistent bottom or top bar showing current hardware state
+    - States: `● SEARCHING`, `● CONNECTED`, `● AUTHENTICATING`, `● READY`, `● DISCONNECTED`, `● ERROR`
+    - Add CSS transitions between view changes (opacity fade + slight Y translate)
+    - Add microinteractions: button press scale, hover states, loading spinners for async ops
+    - _Requirements: Req 1.3_
+
+- [x] 37. README rewrite
+  - [x] 37.1 Rewrite `README.md` with accurate user and developer sections
+    - User section: "Download installer → Install → Launch → Insert security key → Use wallet" (no npm commands)
+    - Hardware compatibility: explicitly list tested hardware (YubiKey 5C NFC fw 5.7.4), mention other FIDO2 keys with hmac-secret
+    - Platform support table: Tier 1 Windows, Tier 2 macOS, Tier 3 Linux
+    - Developer section: prerequisites, architecture explanation, how to build, how to run hardware diagnostics, how to run tests
+    - Known limitations: devnet only, no backup/recovery, code signing not configured, SmartScreen warning
+    - Kiro features section: steering docs, hooks, MCP server, Power, custom agent
+    - Separate clearly: tested functionality, mocked functionality, hardware-dependent, known limitations
+    - _Requirements: Req 22_
+
+- [x] 38. Final verification
+  - [x] 38.1 Run complete test/build/package verification
+    - `npm test` — all tests pass
+    - `npm run build` — TypeScript compiles clean
+    - `npm run lint` — no lint errors
+    - `npm run dist` — installer produced
+    - Manual: install from installer, launch, insert YubiKey, verify device detected, run diagnostic, derive wallet
+    - Document any remaining gaps between mock-verified and hardware-verified functionality
+    - _Requirements: Req 22, Req 23_
+
 ## Notes
 
 - Tasks marked with `*` are optional and can be skipped for a faster MVP implementation
@@ -409,7 +595,16 @@ All CTAP2 operations are isolated to the Electron main process. A `HardwareIdent
     { "id": 18, "tasks": ["27.1", "27.2", "27.3", "28.1"] },
     { "id": 19, "tasks": ["29.1", "30.1"] },
     { "id": 20, "tasks": ["29.2", "30.2"] },
-    { "id": 21, "tasks": ["31.1"] }
+    { "id": 21, "tasks": ["31.1"] },
+    { "id": 22, "tasks": ["33.1"] },
+    { "id": 23, "tasks": ["33.2"] },
+    { "id": 24, "tasks": ["33.3", "33.4", "33.5", "33.6", "34.1", "34.2"] },
+    { "id": 25, "tasks": ["33.7"] },
+    { "id": 26, "tasks": ["33.8", "33.9", "34.3"] },
+    { "id": 27, "tasks": ["34.4", "35.1", "36.1"] },
+    { "id": 28, "tasks": ["36.2", "36.3", "36.4", "36.5", "36.6"] },
+    { "id": 29, "tasks": ["36.7", "37.1"] },
+    { "id": 30, "tasks": ["38.1"] }
   ]
 }
 ```
