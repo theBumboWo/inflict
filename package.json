@@ -14,7 +14,10 @@
         "start": "npm run build && electron .",
         "dev": "electron .",
         "dist": "electron-builder",
-        "postinstall": "electron-rebuild"
+        "postinstall": "electron-rebuild",
+        "hardware:diagnose": "tsx scripts/hardware-diagnose.ts",
+        "hardware:test": "tsx scripts/hardware-test.ts",
+        "diagnostics": "tsx scripts/diagnostics.ts"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "1.32.0",
@@ -41,6 +44,7 @@
         "electron-builder": "26.15.3",
         "eslint": "10.12.0",
         "fast-check": "4.10.2",
+        "tsx": "^4.23.15",
         "typescript": "5.9.3",
         "vite": "8.3.2",
         "vitest": "5.0.3"
@@ -56,10 +60,12 @@
         "files": [
             "dist/**/*",
             "node_modules/**/*",
-            "package.json"
+            "package.json",
+            "libfido2-win/**/*"
         ],
         "asarUnpack": [
-            "**/node_modules/node-hid/**"
+            "**/node_modules/node-hid/**",
+            "**/node_modules/@vaultys/webauthn-node/**"
         ],
         "win": {
             "icon": "assets/icon.ico",

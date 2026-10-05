@@ -113,6 +113,116 @@ KeyWallet is an Electron app with strict process isolation:
 
 The hardware integration layer uses `node-hid` and a TypeScript CTAP2 implementation (not libfido2). All hardware operations go through the `IHardwareIdentityProvider` interface, which is swapped for `MockHardwareIdentityProvider` during tests.
 
+### Windows FIDO2 Integration
+
+On Windows 10 1903+, the OS claims exclusive HID access to FIDO2 devices via the `WinUsb` kernel driver. `node-hid` cannot open the HID interface directly, so the app uses the libfido2 CLI subprocess path instead.
+
+#### How the Windows path works
+
+```
+Physical FIDO2 key inserted via USB or NFC
+        │
+        │  OS HID claim — Windows holds the interface; node-hid cannot open it directly
+        ▼
+  NodeHidHardwareIdentityProvider.listDevices()
+        │  scans full HID device list for known FIDO2 vendor IDs
+        │  (0x1050 Yubico, 0x096e Feitian, 0x2c97 Ledger, etc.)
+        │
+        │  FIDO2 vendor ID detected, no direct HID access
+        ▼
+  Fido2CliHardwareIdentityProvider
+        │  delegates all CTAP2 operations
+        ▼
+  windows://hello  (synthetic device path for libfido2 CLI)
+        │  routes through webauthn.dll — the Windows WebAuthn API
+        ▼
+  libfido2 CLI subprocess  (fido2-assert.exe / fido2-cred.exe / fido2-token.exe)
+        │  bundled under libfido2-win/ in the app resources
+        │  DLLs prepended to child process PATH so no separate install is needed
+        ▼
+  PRF_Output (32 bytes returned by hmac-secret extension)
+```
+
+Key points:
+
+- `NodeHidHardwareIdentityProvider` **detects** devices via the HID vendor-ID scan but does **not** open them directly on Windows. It delegates to `Fido2CliHardwareIdentityProvider` once a known vendor ID is found.
+- If no known FIDO2 vendor ID is in the HID list, `listDevices()` returns empty — no synthetic `windows://hello` entry is synthesised.
+- `@vaultys/webauthn-node` is present as a dependency but is **not used** for hmac-secret operations; its C++ binding does not implement the hmac-secret extension in its `GetAssertion` path.
+- The libfido2 CLI tools and their four DLLs (`fido2.dll`, `cbor.dll`, `crypto.dll`, `zlib1.dll`) ship inside the application bundle — no user installation step is required.
+
+#### CLI tool path resolution
+
+| Mode | Resolved path |
+|---|---|
+| Development (`app.isPackaged === false`) | `app.getAppPath()/libfido2-win/libfido2-1.15.0-win/Win64/Release/v143/dynamic` |
+| Packaged build (`app.isPackaged === true`) | `process.resourcesPath/libfido2-win/libfido2-1.15.0-win/Win64/Release/v143/dynamic` |
+
+The resolved directory is prepended to the child process `PATH` on spawn so the Windows DLL loader finds the bundled DLLs automatically.
+
+---
+
+### YubiKey 5C NFC Setup
+
+These steps cover the full lifecycle for a YubiKey 5C NFC on Windows. All hardware operations run through the `windows://hello` path described above.
+
+#### 1. Setting a PIN
+
+Your YubiKey must have a FIDO2 PIN set before credential enrollment is possible. If no PIN has been set, the app will prompt you to create one.
+
+To set or change the PIN outside the app:
+
+```bash
+# List connected devices and confirm the key is detected
+npm run hardware:diagnose
+
+# Use the YubiKey Manager GUI (ykman-gui) or CLI:
+ykman fido access change-pin
+```
+
+The PIN must be 4–63 characters. Store it securely — if the PIN is entered incorrectly 8 times the key locks permanently (PIN block).
+
+#### 2. Enrolling a credential
+
+On first use, the app creates a CTAP2 resident credential on the key tied to `rpId = "key-wallet.local"`.
+
+1. Launch the app: `npm start`
+2. Insert the YubiKey via USB-C (or tap via NFC)
+3. The status bar shows **CONNECTED** within ~500ms
+4. Click **Enroll**
+5. Enter your PIN when prompted by the Windows Hello dialog
+6. **Touch the gold contact** on the key when it flashes
+7. The app stores the credential ID (non-secret metadata only) and derives your wallet address
+
+The credential is stored as a resident key on the key itself. The app only stores the credential ID hex and display name locally — no secret material is written to disk.
+
+#### 3. Unlocking a session
+
+After enrollment, each session follows this flow:
+
+1. Insert the YubiKey
+2. The app detects it automatically (500ms polling interval)
+3. Click **Unlock** (or the equivalent session-start action in the UI)
+4. Enter your PIN when prompted
+5. **Touch the key** when it flashes
+6. The app calls `fido2-assert.exe` via the `windows://hello` path, which returns the 32-byte `PRF_Output`
+7. HKDF-SHA256 derives the 32-byte wallet seed, `Keypair.fromSeed()` constructs the keypair, and the seed is immediately zeroed
+8. Your Solana wallet address and devnet balance appear
+
+#### 4. Removing the key to terminate
+
+Physically removing the key ends the session immediately:
+
+- The device monitor detects removal within **200ms**
+- `keypair.secretKey` is zeroed with `.fill(0)` before the session record is deleted
+- The UI returns to the **no device** idle state
+- No secret material remains in process memory
+
+Reinserting the key and completing the unlock flow (step 3 above) restores access and derives the same wallet address deterministically.
+
+> **Note:** There is no "lock" button — removing the physical key is the intended session termination mechanism.
+
+---
+
 ### Key derivation flow
 
 ```

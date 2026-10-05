@@ -36,7 +36,7 @@ const ENROLLMENT_STEPS: Array<Exclude<EnrollmentState, "idle" | "failed">> = [
 const STEP_LABELS: Record<Exclude<EnrollmentState, "idle" | "failed">, string> = {
   "checking-pin":    "Verify PIN",
   "awaiting-touch":  "Touch Key",
-  "storing-metadata": "Save",
+  "storing-metadata": "Finalise",
   "complete":        "Done",
 };
 
@@ -44,8 +44,8 @@ const STEP_LABELS: Record<Exclude<EnrollmentState, "idle" | "failed">, string> =
 
 const STAGE_MESSAGES: Record<Exclude<EnrollmentState, "idle">, string> = {
   "checking-pin":    "Verifying your device PIN…",
-  "awaiting-touch":  "Touch your security key to enroll",
-  "storing-metadata": "Saving credential — please wait…",
+  "awaiting-touch":  "Touch your security key when prompted",
+  "storing-metadata": "Finalising — please wait…",
   "complete":        "Enrollment complete!",
   "failed":          "Enrollment failed. Please try again.",
 };
@@ -330,7 +330,7 @@ export function EnrollView({
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
 
   /** Whether the PIN guidance details box is expanded */
-  const [pinGuidanceOpen, setPinGuidanceOpen] = useState(true);
+  const [pinGuidanceOpen, setPinGuidanceOpen] = useState(false);
 
   /** Track mounted state to avoid setState after unmount */
   const mountedRef = useRef(true);

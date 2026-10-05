@@ -170,3 +170,62 @@ src/preload/index.ts    →  ipcRenderer (contextBridge) ✓  [ONLY bridge]
 ```
 
 Any import that crosses a ✗→ boundary is an architecture violation and must be removed.
+
+---
+
+## Active Hardware Provider Set (Windows)
+
+This section documents the current set of active `IHardwareIdentityProvider` implementations on Windows and clarifies which dependencies are present but intentionally unused for certain operations.
+
+### `Fido2CliHardwareIdentityProvider` — Sole Active CTAP2 Provider on Windows
+
+`Fido2CliHardwareIdentityProvider` is the **exclusive provider** for all CTAP2 operations on Windows. It routes every `createCredential`, `getAssertion`, and related call through the `windows://hello` synthetic device path by spawning the bundled `fido2-cred.exe`, `fido2-assert.exe`, and `fido2-token.exe` subprocess tools that ship with libfido2 1.15.0.
+
+```
+IHardwareIdentityProvider
+        │
+        └─► Fido2CliHardwareIdentityProvider
+                │  spawns child process
+                ▼
+           fido2-assert.exe / fido2-cred.exe / fido2-token.exe
+                │  device path argument
+                ▼
+           windows://hello  (routes through webauthn.dll)
+                │
+                ▼
+           Physical FIDO2 authenticator (e.g. YubiKey 5C NFC)
+```
+
+This design is required because Windows 10 1903+ places an exclusive OS HID claim on FIDO2 devices, making direct `node-hid` access impossible. The libfido2 CLI tools bypass this restriction by routing through `webauthn.dll` via the `windows://hello` synthetic path.
+
+The previous table entry `Libfido2HardwareIdentityProvider` is **not in active use**; it is superseded by `Fido2CliHardwareIdentityProvider`.
+
+### `NodeHidHardwareIdentityProvider` — Device Detection Delegate
+
+`NodeHidHardwareIdentityProvider` performs device enumeration on Windows by scanning the full HID device list for known FIDO2 vendor IDs. When a known vendor is detected and no FIDO HID interface is directly accessible (due to the OS claim), it **delegates all subsequent CTAP2 calls** (`createCredential`, `getAssertion`, `discoverCredentials`) to `Fido2CliHardwareIdentityProvider`. It does not perform CTAP2 operations itself on Windows.
+
+### `@vaultys/webauthn-node` — Dependency Present, NOT Used for hmac-secret
+
+`@vaultys/webauthn-node` is listed as a package dependency but **must not be instantiated for any operation that requires the hmac-secret extension**.
+
+Reason: the `@vaultys/webauthn-node` C++ binding does not implement the hmac-secret extension in its `GetAssertion` path. Calling it for a PRF derivation operation silently omits the `hmac-secret` extension, returning no `PRF_Output` and yielding a silent derivation failure.
+
+The forbidden usage pattern is:
+
+```ts
+// FORBIDDEN — @vaultys/webauthn-node does not support hmac-secret
+import WebAuthnNode from '@vaultys/webauthn-node';
+const result = await WebAuthnNode.getAssertion({ extensions: { hmacSecret: salt } });
+// ^ extension is silently ignored; PRF_Output will not be returned
+```
+
+The correct path for any hmac-secret operation is always `Fido2CliHardwareIdentityProvider`.
+
+### Updated Known Implementations Table
+
+| Class | Location | Purpose | Active on Windows |
+|---|---|---|---|
+| `Fido2CliHardwareIdentityProvider` | `src/main/hardware/` | Production — CTAP2 via libfido2 CLI subprocess through `windows://hello` | ✅ Yes — sole active provider |
+| `NodeHidHardwareIdentityProvider` | `src/main/hardware/` | Device detection — delegates CTAP2 to `Fido2CliHardwareIdentityProvider` on Windows | ✅ Yes — for enumeration |
+| `Libfido2HardwareIdentityProvider` | `src/main/hardware/` | Superseded — direct libfido2 binding (blocked by OS HID claim on Windows 10 1903+) | ❌ Not active |
+| `MockHardwareIdentityProvider` | `test/mocks/MockHardwareIdentityProvider.ts` | Tests — deterministic software mock, no real hardware | ✅ Tests only |

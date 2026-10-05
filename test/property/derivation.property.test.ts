@@ -41,6 +41,7 @@ async function deriveFromPrfOutput(prfOutput: Uint8Array) {
 // Property 1: Derivation Determinism
 // Feature: key-wallet, Property 1: Derivation Determinism
 // Validates: Requirements 18.1
+// Also validates: hardware-integration-audit Requirements 8.1, 15.1
 // ---------------------------------------------------------------------------
 describe("Property 1: Derivation Determinism", () => {
   it("for any fixed 32-byte PRF_Output, deriveWallet called twice returns the same walletAddress", async () => {
@@ -68,6 +69,7 @@ describe("Property 1: Derivation Determinism", () => {
 // Property 2: Derivation Injectivity
 // Feature: key-wallet, Property 2: Derivation Injectivity
 // Validates: Requirements 18.2
+// Also validates: hardware-integration-audit Requirements 8.4, 15.2
 // ---------------------------------------------------------------------------
 describe("Property 2: Derivation Injectivity", () => {
   it("for any two distinct 32-byte PRF_Output arrays a ≠ b, derived walletAddress values must differ", async () => {

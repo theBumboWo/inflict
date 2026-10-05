@@ -124,6 +124,21 @@ terminateSession(sessionId: string): void {
 }
 ```
 
+The minimal canonical form of the zero-in-finally rule (null guards before zeroing):
+
+```typescript
+let hmacOutput: Uint8Array | null = null;
+let walletSeed: Buffer | null = null;
+try {
+  // ... use buffers ...
+} finally {
+  if (hmacOutput !== null) hmacOutput.fill(0);
+  if (walletSeed !== null) walletSeed.fill(0);
+}
+```
+
+The null-initialisation pattern ensures that the `finally` block never attempts to call `.fill()` on a variable that was never assigned — important when the error is thrown before any buffer is allocated.
+
 **❌ Incorrect — letting secret buffers fall out of scope without zeroing**
 
 ```typescript
@@ -144,6 +159,10 @@ try {
   throw e;            // prfOutput still in memory
 }
 ```
+
+### Accepted limitation — stdout pipe buffer
+
+The base64-encoded PRF_Output travels through the `fido2-assert.exe` stdout pipe. This pipe buffer is a Node.js-managed heap allocation that cannot be zeroed after reading. The intermediate `Buffer` used to decode the base64 value is zeroed immediately after copying into the returned `Uint8Array`, but the underlying pipe accumulation buffer is not. This is an accepted limitation of the CLI-subprocess architecture.
 
 ---
 
